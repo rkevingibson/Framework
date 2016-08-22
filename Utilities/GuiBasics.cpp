@@ -3,10 +3,12 @@
 #define GLFW_EXPOSE_NATIVE_WIN32
 #define GLFW_EXPOSE_NATIVE_WGL
 #define NOMINMAX
+
+#pragma comment(lib, "glfw3.lib")
 #endif
-#include "External/GLFW/glfw3native.h"
-#include "External/imgui/imgui.h"
-#include "Renderer/Renderer.h"
+#include "../External/GLFW/glfw3native.h"
+#include "../External/imgui/imgui.h"
+#include "../Renderer/Renderer.h"
 
 namespace {
 	struct {
