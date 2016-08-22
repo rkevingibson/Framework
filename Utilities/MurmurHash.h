@@ -1,5 +1,5 @@
 #pragma once
-#include "Utilities/Utilities.h"
+#include "../Utilities/Utilities.h"
 //Class to help compute hash of arbitrary data.
 namespace rkg {
 	class MurmurHash
