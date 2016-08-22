@@ -58,6 +58,10 @@ typedef uint32_t t_ply_uint32;
 #define PLY_UINT32_MAX UINT32_MAX
 #endif
 
+#ifdef _MSC_VER
+#define _CRT_SECURE_NO_WARNINGS
+#endif
+
 /* ----------------------------------------------------------------------
  * Constants
  * ---------------------------------------------------------------------- */
