@@ -9,8 +9,8 @@
 #include <shared_mutex>
 #include <cstddef>
 #include <algorithm>
-#include "Utilities/Utilities.h"
-#include "Utilities/MurmurHash.h"
+#include "../Utilities/Utilities.h"
+#include "../Utilities/MurmurHash.h"
 
 using namespace render;
 
@@ -18,12 +18,14 @@ using namespace render;
 
 #pragma region OpenGL Information
 #ifdef _WIN32
+
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #define GLAPI WINAPI
 #endif //_WIN32
 
+#pragma comment(lib, "opengl32.lib")
 #include <GL/gl.h>
 
 namespace {

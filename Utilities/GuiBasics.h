@@ -1,5 +1,5 @@
 #pragma once
-#include "External/GLFW/glfw3.h"
+#include "../External/GLFW/glfw3.h"
 
 /*
 	Just some helper functions to set up ImGui with glfw and the renderer.
