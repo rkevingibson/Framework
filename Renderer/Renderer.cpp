@@ -807,6 +807,16 @@ void render::Initialize()
 	glDebugMessageCallback(GLErrorCallback, nullptr);
 	glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
 #endif
+
+	glEnable(GL_DEPTH_TEST);
+	//glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+	glEnable(GL_SCISSOR_TEST);
+	glEnable(GL_BLEND);
+	glBlendEquation(GL_FUNC_ADD);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glEnable(GL_CULL_FACE);
+	glCullFace(GL_BACK);
+
 	CreateLayer();
 	return;
 }
@@ -1513,14 +1523,6 @@ void render::Render()
 	unsigned int num_commands = key_index[back_buffer];
 	glClearColor(0.f, 0.f, 0.f, 1.f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	glEnable(GL_DEPTH_TEST);
-	//glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-	glEnable(GL_SCISSOR_TEST);
-	glEnable(GL_BLEND);
-	glBlendEquation(GL_FUNC_ADD);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	glEnable(GL_CULL_FACE);
-	glCullFace(GL_BACK);
 
 	for (unsigned int command_index = 0; command_index < num_commands; command_index++) {
 		auto encoded_key = keys[back_buffer][command_index];
