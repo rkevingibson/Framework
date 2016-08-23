@@ -204,6 +204,8 @@ namespace render {
 	};
 
 	void Initialize();
+	void Resize(int w, int h);
+
 
 	/*==================== Resource Management ====================*/
 

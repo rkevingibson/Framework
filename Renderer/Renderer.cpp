@@ -820,6 +820,28 @@ void render::Initialize()
 	CreateLayer();
 	return;
 }
+
+namespace {
+	void Resize(Cmd*);
+	struct ResizeCmd : Cmd {
+		static constexpr DispatchFn DISPATCH{ Resize };
+		int w, h;
+	};
+
+	void Resize(Cmd* cmd)
+	{
+		auto data = reinterpret_cast<ResizeCmd*>(cmd);
+		glViewport(0, 0, data->w, data->h);
+	}
+}
+
+void render::Resize(int w, int h)
+{
+	auto cmd = pre_buffer.Add<ResizeCmd>();
+	cmd->w = w;
+	cmd->h = h;
+}
+
 #pragma region Memory Management
 /*==================== MEMORY MANAGEMENT ====================*/
 namespace {
