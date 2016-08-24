@@ -6,6 +6,12 @@ namespace rkg {
 
 	struct Vec2 {
 		float x, y;
+		inline Vec2() = default;
+		inline Vec2(const Vec2&) = default;
+		inline Vec2(Vec2&&) = default;
+		inline Vec2(float x_, float y_) : x{ x_ }, y{ y_ }{}
+		inline Vec2(const float data[2]) : x{ data[0] }, y{ data[1] } {}
+
 
 		//====================Compound Operators====================
 		//Vector addition
