@@ -12,6 +12,8 @@ namespace rkg {
 		inline Vec2(float x_, float y_) : x{ x_ }, y{ y_ }{}
 		inline Vec2(const float data[2]) : x{ data[0] }, y{ data[1] } {}
 
+		Vec2& operator=(const Vec2& rhs) = default;
+		Vec2& operator=(Vec2&& rhs) = default;
 
 		//====================Compound Operators====================
 		//Vector addition
