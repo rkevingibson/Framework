@@ -15,6 +15,17 @@ namespace rkg {
 		Vec2& operator=(const Vec2& rhs) = default;
 		Vec2& operator=(Vec2&& rhs) = default;
 
+		inline float length() const noexcept { return std::sqrt(x*x + y*y); }
+
+		//====================Comparison operators==================
+		inline friend bool operator==(const Vec2& lhs, const Vec2& rhs) {
+			return lhs.x == rhs.x && lhs.y == rhs.y;
+		}
+
+		inline friend bool operator!=(const Vec2& lhs, const Vec2& rhs) {
+			return lhs.x != rhs.x || lhs.y != rhs.y;
+		}
+
 		//====================Compound Operators====================
 		//Vector addition
 		inline Vec2& operator+=(const Vec2& rhs) {
@@ -38,32 +49,32 @@ namespace rkg {
 		}
 
 		//==================== Binary Operators ====================
-		friend Vec2 operator+(Vec2 lhs, const Vec2& rhs) noexcept {
+		inline friend Vec2 operator+(Vec2 lhs, const Vec2& rhs) noexcept {
 			lhs += rhs;
 			return lhs;
 		}
 		//Vector subtraction
-		friend Vec2 operator-(Vec2 lhs, const Vec2& rhs) noexcept {
+		inline friend Vec2 operator-(Vec2 lhs, const Vec2& rhs) noexcept {
 			lhs -= rhs;
 			return lhs;
 		}
 		//Scalar multiplication
-		friend Vec2 operator*(Vec2 lhs, float rhs) noexcept {
+		inline friend Vec2 operator*(Vec2 lhs, float rhs) noexcept {
 			lhs *= rhs;
 			return lhs;
 		}
 		//Scalar multiplication
-		friend Vec2 operator*(float lhs, Vec2 rhs) noexcept {
+		inline friend Vec2 operator*(float lhs, Vec2 rhs) noexcept {
 			rhs *= lhs;
 			return rhs;
 		}
 		//Scalar division
-		friend Vec2 operator/(Vec2 lhs, float rhs) {
+		inline friend Vec2 operator/(Vec2 lhs, float rhs) {
 			lhs /= rhs;
 			return lhs;
 		}
 		//Vector dot product
-		friend float dot(const Vec2& lhs, const Vec2& rhs) noexcept {
+		inline friend float dot(const Vec2& lhs, const Vec2& rhs) noexcept {
 			return lhs.x*rhs.x + lhs.y*rhs.y;
 		}
 
