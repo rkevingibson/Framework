@@ -15,7 +15,7 @@ namespace rkg {
 		Vec2& operator=(const Vec2& rhs) = default;
 		Vec2& operator=(Vec2&& rhs) = default;
 
-		inline float length() const noexcept { return std::sqrt(x*x + y*y); }
+		inline float Length() const noexcept { return std::sqrt(x*x + y*y); }
 
 		//====================Comparison operators==================
 		inline friend bool operator==(const Vec2& lhs, const Vec2& rhs) {
@@ -74,7 +74,7 @@ namespace rkg {
 			return lhs;
 		}
 		//Vector dot product
-		inline friend float dot(const Vec2& lhs, const Vec2& rhs) noexcept {
+		inline friend float Dot(const Vec2& lhs, const Vec2& rhs) noexcept {
 			return lhs.x*rhs.x + lhs.y*rhs.y;
 		}
 
@@ -91,7 +91,7 @@ namespace rkg {
 		Vec3& operator=(const Vec3& rhs) = default;
 		Vec3& operator=(Vec3&& rhs) = default;
 		
-		inline float length() const noexcept { return std::sqrt(x*x + y*y + z*z); }
+		inline float Length() const noexcept { return std::sqrt(x*x + y*y + z*z); }
 	
 		//====================Compound Operators====================//
 
@@ -145,11 +145,11 @@ namespace rkg {
 			return lhs;
 		}
 		//Vector dot product
-		inline friend float dot(const Vec3& lhs, const Vec3& rhs) noexcept {
+		inline friend float Dot(const Vec3& lhs, const Vec3& rhs) noexcept {
 			return lhs.x*rhs.x + lhs.y*rhs.y + lhs.z*rhs.z;
 		}
 		//Vector cross product
-		inline friend Vec3 cross(const Vec3& u, const Vec3& v) {
+		inline friend Vec3 Cross(const Vec3& u, const Vec3& v) {
 			Vec3 result;
 			result.x = u.y*v.z - u.z*v.y;
 			result.y = u.z*v.x - u.x*v.z;
@@ -157,17 +157,17 @@ namespace rkg {
 			return result;
 		}
 	
-		inline friend Vec3 normalize(const Vec3& a) {
+		inline friend Vec3 Normalize(const Vec3& a) {
 			auto l = a.length();
 			return Vec3(a.x / l, a.y / l, a.z / l);
 		}
 	
-		inline friend Vec3 min(const Vec3& a, const Vec3& b) {
-			return Vec3(std::min({ a.x, b.x }), std::min({ a.y, b.y }), std::min({ a.z, b.z }));
+		inline friend Vec3 Min(const Vec3& a, const Vec3& b) {
+			return Vec3(std::min(a.x, b.x), std::min(a.y, b.y), std::min(a.z, b.z));
 		}
 	
-		inline friend Vec3 max(const Vec3& a, const Vec3& b) {
-			return Vec3(std::max({ a.x,b.x }), std::max({ a.y,b.y }), std::max({ a.z,b.z }));
+		inline friend Vec3 Max(const Vec3& a, const Vec3& b) {
+			return Vec3(std::max(a.x, b.x), std::max(a.y, b.y), std::max(a.z, b.z));
 		}
 	};
 
@@ -226,9 +226,93 @@ namespace rkg {
 			return lhs;
 		}
 		//Vector dot product
-		friend float dot(const Vec4& lhs, const Vec4& rhs) noexcept {
+		friend float Dot(const Vec4& lhs, const Vec4& rhs) noexcept {
 			return lhs.x*rhs.x + lhs.y*rhs.y + lhs.z*rhs.z + lhs.w*rhs.w;
 		}
+	};
+
+	struct Mat3
+	{
+		float data[9];
+
+		//=====================Access operators=====================
+		inline float& operator()(unsigned int row, unsigned int col)
+		{
+			return data[3 * col + row];
+		}
+
+		inline const float& operator()(unsigned int row, unsigned int col) const
+		{
+			return data[3 * col + row];
+		}
+
+		inline float& operator[](unsigned int idx) 
+		{
+			return data[idx];
+		}
+
+		inline const float& operator[](unsigned int idx) const
+		{
+			return data[idx];
+		}
+
+		inline friend Mat3 operator*(const Mat3& lhs, const Mat3& rhs)
+		{
+			Mat3 x;
+			x[0] = lhs[0] * rhs[0] + lhs[3] * rhs[1] + lhs[6] * rhs[2];
+			x[1] = lhs[1] * rhs[0] + lhs[4] * rhs[1] + lhs[7] * rhs[2];
+			x[2] = lhs[2] * rhs[0] + lhs[5] * rhs[1] + lhs[8] * rhs[2]; 
+			x[3] = lhs[0] * rhs[3] + lhs[3] * rhs[4] + lhs[6] * rhs[5];
+			x[4] = lhs[1] * rhs[3] + lhs[4] * rhs[4] + lhs[7] * rhs[5];
+			x[5] = lhs[2] * rhs[3] + lhs[5] * rhs[4] + lhs[8] * rhs[5];
+			x[6] = lhs[0] * rhs[6] + lhs[3] * rhs[7] + lhs[6] * rhs[8];
+			x[7] = lhs[1] * rhs[6] + lhs[4] * rhs[7] + lhs[7] * rhs[8];
+			x[8] = lhs[2] * rhs[6] + lhs[5] * rhs[7] + lhs[8] * rhs[8];
+			return x;
+		}
+
+		inline friend Mat3 operator*(const Mat3& lhs, float rhs) noexcept
+		{
+			Mat3 x;
+			for (int i = 0; i < 9; i++)
+			{
+				x[i] = rhs*lhs[i];
+			}
+			return x;
+		}
+
+		inline friend Mat3 operator*(float lhs, const Mat3& rhs) noexcept {
+			return rhs*lhs;
+		}
+
+		inline float Determinant() const noexcept
+		{
+			return data[0] * data[4] * data[8] + data[3] * data[7] * data[2] + data[6] * data[1] * data[5]
+				 - data[0] * data[7] * data[5] - data[3] * data[1] * data[8] - data[6] * data[4] * data[2];
+		}
+
+		//Returns the inverse, or the zero matrix if non-invertible.
+		inline friend Mat3 InverseOrZero(const Mat3& x) noexcept
+		{
+			float det = x.Determinant();
+			Mat3 result;
+			if (det < std::numeric_limits<float>::epsilon()) {
+				memset(result.data, 0, sizeof(result.data));
+				return result;
+			}
+			result[0] = x[4] * x[8] - x[7] * x[5];
+			result[1] = x[7] * x[2] - x[1] * x[8];
+			result[2] = x[1] * x[5] - x[4] * x[2];
+			result[3] = x[6] * x[5] - x[3] * x[8];
+			result[4] = x[0] * x[8] - x[6] * x[2];
+			result[5] = x[3] * x[2] - x[0] * x[5];
+			result[6] = x[3] * x[7] - x[6] * x[4];
+			result[7] = x[6] * x[1] - x[0] * x[7];
+			result[8] = x[0] * x[4] - x[3] * x[1];
+			return (1.f / det)*result;
+		}
+
+
 	};
 
 	struct Mat4 
