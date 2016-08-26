@@ -22,7 +22,7 @@
 #define MEGA(x) (1024L*1024*x)
 #define GIGA(x) (1024L*1024L*1024L*x)
 
-#define RKG_ARRAY_LENGTH(arr) ((int)(sizeof(arr)/sizeof(arr[0])));
+#define RKG_ARRAY_LENGTH(arr) ((int)(sizeof(arr)/sizeof(*arr)))
 
 /*
 ====================

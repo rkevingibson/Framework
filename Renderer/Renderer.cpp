@@ -80,8 +80,24 @@ namespace {
 #define GL_DEBUG_SOURCE_THIRD_PARTY       0x8249
 #define GL_DEBUG_SOURCE_APPLICATION       0x824A
 #define GL_DEBUG_SOURCE_OTHER             0x824B
-
-
+#define GL_COMPILE_STATUS                 0x8B81
+#define GL_FLOAT_VEC2                     0x8B50
+#define GL_FLOAT_VEC3                     0x8B51
+#define GL_FLOAT_VEC4                     0x8B52
+#define GL_INT_VEC2                       0x8B53
+#define GL_INT_VEC3                       0x8B54
+#define GL_INT_VEC4                       0x8B55
+#define GL_BOOL                           0x8B56
+#define GL_BOOL_VEC2                      0x8B57
+#define GL_BOOL_VEC3                      0x8B58
+#define GL_BOOL_VEC4                      0x8B59
+#define GL_FLOAT_MAT2                     0x8B5A
+#define GL_FLOAT_MAT3                     0x8B5B
+#define GL_FLOAT_MAT4                     0x8B5C
+#define GL_SAMPLER_1D                     0x8B5D
+#define GL_SAMPLER_2D                     0x8B5E
+#define GL_SAMPLER_3D                     0x8B5F
+#define GL_SAMPLER_CUBE                   0x8B60
 	/*
 	Define X-macro of opengl functions to load.
 	order is ret, name, args...
@@ -111,6 +127,8 @@ namespace {
 	GLX(void, GetActiveUniform, GLuint program, GLuint index, GLsizei bufSize, GLsizei *length, GLint *size, GLenum *type, GLchar *name) \
 	GLX(GLint, GetUniformLocation, GLuint program, const GLchar* name) \
 	GLX(void, UseProgram, GLuint program) \
+	GLX(void, GetShaderiv, GLuint shader, GLenum param, GLint* params)\
+	GLX(void, GetShaderInfoLog, GLuint shader, GLsizei maxLength, GLsizei * length, GLchar* infoLog )\
 	/*Buffer functions*/ \
 	GLX(void, GenBuffers, GLsizei n, GLuint* buffers) \
 	GLX(void, BindBuffer, GLenum target, GLuint buffer) \
@@ -385,6 +403,8 @@ struct Uniform {
 struct Program 
 {
 	GLuint	id;
+	unsigned int num_uniforms;
+	UniformHandle uniform_handles[MAX_UNIFORMS];
 	GLCache<MAX_UNIFORMS> uniforms;
 };
 
@@ -440,7 +460,7 @@ struct ComputeCmd : public RenderCmd
 //I need some queues. First off, a queue for the draw cmds. 
 //These are double-buffered, to allow submission while rendering.
 uint64_t frame;
-
+ErrorCallbackFn error_callback;
 
 struct EncodedKey{
 	uint64_t key;
@@ -794,7 +814,7 @@ namespace {
 			break;
 		}
 
-		printf(message);
+		//printf(message);
 	}
 }
 
@@ -820,6 +840,11 @@ void render::Initialize()
 
 	CreateLayer();
 	return;
+}
+
+void render::SetErrorCallback(ErrorCallbackFn f)
+{
+	error_callback = f;
 }
 
 namespace {
@@ -896,9 +921,10 @@ const MemoryBlock* render::LoadShaderFile(const char* file)
 	}
 	fseek(f, 0, SEEK_END);
 	auto len = ftell(f);
-	auto block = Alloc(len);
+	auto block = Alloc(len + 1);
 	rewind(f);
 	fread(block->data, 1, len, f);
+	((char*)block->data)[len] = '\0';
 	fclose(f);
 	return block;
 }
@@ -916,6 +942,56 @@ LayerHandle render::CreateLayer()
 
 
 namespace {
+	UniformType UniformTypeFromEnum(GLenum e)
+	{
+		switch (e)
+		{
+		case GL_SAMPLER_1D:
+		case GL_SAMPLER_2D:
+		case GL_SAMPLER_3D:
+		case GL_SAMPLER_CUBE:
+			return UniformType::Sampler;
+			break;
+		case GL_INT:
+			return UniformType::Int;
+			break;
+		case GL_UNSIGNED_INT:
+			return UniformType::Uint;
+			break;
+		case GL_FLOAT:
+			return UniformType::Float;
+			break;
+
+		case GL_FLOAT_VEC2:
+			return UniformType::Vec2;
+			break;
+		case GL_INT_VEC2:
+			return UniformType::Ivec2;
+			break;
+		case GL_FLOAT_VEC3:
+			return UniformType::Vec3;
+			break;
+		case GL_INT_VEC3:
+			return UniformType::Ivec3;
+			break;
+		case GL_FLOAT_VEC4:
+			return UniformType::Vec4;
+			break;
+		case GL_INT_VEC4:
+			return UniformType::Ivec4;
+			break;
+		case GL_FLOAT_MAT3:
+			return UniformType::Mat3;
+			break;
+		case GL_FLOAT_MAT4:
+			return UniformType::Mat4;
+			break;
+		default:
+			return UniformType::Count;
+			break;
+		}
+	}
+
 	void CreateProgram(Cmd* cmd);
 	struct CreateProgramCmd : Cmd {
 		static constexpr DispatchFn DISPATCH = { CreateProgram };
@@ -934,6 +1010,26 @@ namespace {
 		glShaderSource(frag, 1, (const GLchar**)&data->frag_shader->data, nullptr);
 		glCompileShader(frag);
 
+		if (error_callback != nullptr)
+		{
+			GLint status;
+			glGetShaderiv(vert, GL_COMPILE_STATUS, &status);
+			if (status != GL_TRUE)
+			{
+				char buffer[512];
+				glGetShaderInfoLog(vert, 512, NULL, buffer);
+				printf(buffer);
+				error_callback(buffer);
+			}
+
+			glGetShaderiv(frag, GL_COMPILE_STATUS, &status);
+			if (status != GL_TRUE)
+			{
+				char buffer[512];
+				glGetShaderInfoLog(frag, 512, NULL, buffer);
+				error_callback(buffer);
+			}
+		}
 		auto program = glCreateProgram();
 		glAttachShader(program, vert);
 		glAttachShader(program, frag);
@@ -963,8 +1059,18 @@ namespace {
 				auto loc = glGetUniformLocation(program, uniform_name_buffer);
 				rkg::MurmurHash murmur;
 				murmur.Add(uniform_name_buffer, length);
-				programs[data->index].uniforms.Add(murmur.Finish(), loc);
+				auto hash = murmur.Finish();
+				programs[data->index].uniforms.Add(hash, loc);
+
+
+				auto uni = uniforms.Push();
+				uni.obj->hash = hash;
+				strcpy_s(uni.obj->name, uniform_name_buffer);
+				uni.obj->type = UniformTypeFromEnum(type);
+				programs[data->index].uniform_handles[i].index = uni.index;
+				
 			}
+			programs[data->index].num_uniforms = num_uniforms;
 		}
 
 		programs[data->index].id = program;
@@ -983,6 +1089,30 @@ ProgramHandle render::CreateProgram(const MemoryBlock* vertex_shader, const Memo
 	cmd->index = program.index;
 	
 	return result;
+}
+
+unsigned int render::GetNumUniforms(ProgramHandle h)
+{
+	return programs[h.index].num_uniforms;
+}
+
+int render::GetProgramUniforms(ProgramHandle h, UniformHandle* buffer, int size)
+{
+	memcpy_s(buffer, size * sizeof(UniformHandle), programs[h.index].uniform_handles, programs[h.index].num_uniforms*sizeof(UniformHandle));
+	return programs[h.index].num_uniforms;
+}
+
+void render::GetUniformInfo(UniformHandle h, char* name, int name_size, UniformType* type)
+{
+	//Get the name and type
+#ifdef RENDER_DEBUG
+	if (name != nullptr) {
+		strcpy_s(name, name_size, uniforms[h.index].name);
+	}
+#endif
+	if (type != nullptr) {
+		*type = uniforms[h.index].type;
+	}
 }
 
 #pragma region Vertex Buffer Functions
@@ -1416,6 +1546,29 @@ void render::SetUniform(UniformHandle handle, const void* data, int num)
 
 #pragma endregion
 
+#pragma region Destroy Functions
+
+void	render::Destroy(LayerHandle) {}
+
+void	render::Destroy(ProgramHandle h) 
+{
+	
+}
+
+void	render::Destroy(VertexBufferHandle) {}
+
+void	render::Destroy(DynamicVertexBufferHandle) {}
+
+void	render::Destroy(IndexBufferHandle) {}
+
+void	render::Destroy(DynamicIndexBufferHandle) {}
+
+void	render::Destroy(TextureHandle) {}
+
+void	render::Destroy(UniformHandle) {}
+
+#pragma endregion
+
 void render::SetState(uint64_t flags)
 {
 	current_draw.render_state = flags;
@@ -1585,12 +1738,9 @@ void render::Render()
 		}
 
 		//Everything else is a draw command
-
 		auto draw_cmd = reinterpret_cast<DrawCmd*>(cmd);
 
 		//Check view and update it
-
-		
 
 		//Update rasterization state
 		if (raster_state != draw_cmd->render_state ) //Raster state has changed.
@@ -1598,7 +1748,6 @@ void render::Render()
 			//Depth test
 			if (((raster_state ^ draw_cmd->render_state) & RenderState::DEPTH_TEST_MASK) != 0) 
 			{
-				
 				//NOTE: This list has to match the order in the RenderState enum. I don't love that brittleness.
 				if ((raster_state & RenderState::DEPTH_TEST_MASK) == RenderState::DEPTH_TEST_OFF) {
 					glEnable(GL_DEPTH_TEST);
@@ -1650,7 +1799,6 @@ void render::Render()
 			if (((raster_state ^ draw_cmd->render_state) & RenderState::CULL_MASK) != 0) 
 			{
 				//Culling state
-
 				auto cull_state = draw_cmd->render_state & RenderState::CULL_MASK;
 				if ((raster_state & RenderState::CULL_MASK) == RenderState::CULL_OFF) {
 					glEnable(GL_CULL_FACE);
@@ -1681,16 +1829,11 @@ void render::Render()
 				};
 				const int primitive_index = (draw_cmd->render_state & RenderState::PRIMITIVE_MASK) >> RenderState::PRIMITIVE_SHIFT;
 				primitive_type = primitive_types[primitive_index];
-
 			}
-
-
 			raster_state = draw_cmd->render_state;
 		}
 
 		//Update scissoring
-		
-
 		if (draw_cmd->scissor[2] == UINT32_MAX ){
 			draw_cmd->scissor[2] = framebuffer_size[2];
 		}
@@ -1703,7 +1846,6 @@ void render::Render()
 			std::memcpy(scissor, draw_cmd->scissor, sizeof(scissor));
 		}
 
-		
 		//VAOs - lookup the appropriate one, create it if necessary.
 		{
 			if (index_buffer_handle.index != draw_cmd->index_buffer ||
@@ -1761,8 +1903,6 @@ void render::Render()
 				}
 			}
 		}
-
-
 
 		//Draw.
 		if (index_buffer_handle.index != INVALID_HANDLE) {

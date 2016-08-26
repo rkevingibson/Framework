@@ -203,7 +203,10 @@ namespace render {
 		uint32_t size;
 	};
 
+	using ErrorCallbackFn = void(*)(const char* msg);
+
 	void Initialize();
+	void SetErrorCallback(ErrorCallbackFn f);
 	void Resize(int w, int h);
 
 
@@ -225,7 +228,9 @@ namespace render {
 	
 	LayerHandle	CreateLayer();
 	ProgramHandle	CreateProgram(const MemoryBlock* vertex_shader, const MemoryBlock* frag_shader);
-
+	unsigned int GetNumUniforms(ProgramHandle h); //NOTE: This function must be called a frame after the program was created.
+	int GetProgramUniforms(ProgramHandle h, UniformHandle* buffer, int size);
+	void GetUniformInfo(UniformHandle h, char* name, int name_size, UniformType* type);
 #pragma endregion
 
 #pragma region Vertex Buffer Functions
@@ -256,6 +261,7 @@ namespace render {
 
 
 	//Because handles are all unique types, we can have nice overloading to keep things simple.
+	//TODO: Right now these don't do anything.
 	void	Destroy(LayerHandle);
 	void	Destroy(ProgramHandle);
 	void	Destroy(VertexBufferHandle);
@@ -275,6 +281,8 @@ namespace render {
 	void SetIndexBuffer(DynamicIndexBufferHandle h, uint32_t first_element = 0, uint32_t num_elements = UINT32_MAX);
 	void SetTexture(TextureHandle tex, UniformHandle sampler, uint16_t texture_unit);
 	void SetScissor(uint32_t x, uint32_t y, uint32_t w, uint32_t h);
+
+
 
 
 	//Submit a draw call using the currently bound buffers.
