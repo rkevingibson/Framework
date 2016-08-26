@@ -23,9 +23,10 @@ using namespace render;
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #define GLAPI WINAPI
+#pragma comment(lib, "opengl32.lib")
 #endif //_WIN32
 
-#pragma comment(lib, "opengl32.lib")
+
 #include <GL/gl.h>
 
 namespace {
