@@ -21,7 +21,7 @@ namespace rkg
 		do 
 		{
 			if (file.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY && folders) {
-				result.push_back(file.cFileName);
+				result.push_back(std::string(file.cFileName) + "/");
 			}
 			else if (files) {
 				result.push_back(file.cFileName);
