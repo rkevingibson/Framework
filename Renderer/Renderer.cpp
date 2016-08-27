@@ -129,6 +129,7 @@ namespace {
 	GLX(void, UseProgram, GLuint program) \
 	GLX(void, GetShaderiv, GLuint shader, GLenum param, GLint* params)\
 	GLX(void, GetShaderInfoLog, GLuint shader, GLsizei maxLength, GLsizei * length, GLchar* infoLog )\
+	GLX(void, DeleteProgram, GLuint program)\
 	/*Buffer functions*/ \
 	GLX(void, GenBuffers, GLsizei n, GLuint* buffers) \
 	GLX(void, BindBuffer, GLenum target, GLuint buffer) \
@@ -286,8 +287,44 @@ namespace {
 		std::array<byte, Size> buffer_;
 	};
 
+	template<uint32_t Size>
+	class RingBuffer
+	{
+		/*Simple MPMC thread-safe ring buffer to store a free-list.
+		Uses mutexes. Since this is used only when a GL resource is created/destroyed, 
+		it doesn't need to be super high-performance. Can always benchmark later.
+		*/	
+	private:
+		std::mutex mutex;
+		unsigned int read{ 0 };
+		unsigned int write{ 0 };
+		uint16_t buffer[Size];
+	public:
+		bool Push(uint16_t val)
+		{			
+			std::lock_guard<std::mutex> lock(mutex);
+			if (write == read + Size) { return false; }
+			buffer[write % Size] = val;
+			write++;
+			return true;
+		}
+
+		bool Pop(uint16_t* val)
+		{
+			std::lock_guard<std::mutex> lock(mutex);
+			if (read == write) { 
+				*val = 0;
+				return false; 
+			}
+			*val = buffer[read % Size];
+			read++;
+			return true;
+		}
+
+	};
+
 	template<typename T, uint32_t Size>
-	class Stack
+	class ResourceList
 	{
 	public:
 		struct ResultPair
@@ -296,10 +333,27 @@ namespace {
 			T* obj;
 		};
 
-		ResultPair Push()
+		ResourceList() 
 		{
-			auto index = pos_.fetch_add(1);
+			for (uint16_t i = 0; i < Size; i++) {
+				bool success = free_list.Push(i);
+				ASSERT(success && "Something wrong in the ring buffer code!");
+			}
+		}
+
+		ResultPair Create()
+		{
+			uint16_t index;
+			auto success = free_list.Pop(&index);
+			ASSERT(success);
 			return ResultPair{ index, &data_[index] };
+		}
+
+		void Remove(uint16_t index)
+		{
+			//NOTE: Pretty sure this isn't thread-safe. Could memset after the free_list thing, in theory.
+			memset(&data_[index], 0, sizeof(T));
+			free_list.Push(index);
 		}
 
 		inline T& operator[](uint32_t index)
@@ -315,7 +369,7 @@ namespace {
 
 	private:
 		T data_[Size];
-		std::atomic<uint32_t> pos_{ 0 };
+		RingBuffer<Size> free_list;
 	};
 #pragma endregion
 
@@ -495,12 +549,12 @@ void SortKeys(unsigned int buffer)
 
 //These buffers manage resources which live across many frames.
 //Stack really isn't appropriate for these... Really want an allocator or something.
-Stack<RenderLayer, MAX_RENDER_LAYERS>	layers;
-Stack<VertexBuffer, MAX_VERTEX_BUFFERS>	vertex_buffers;
-Stack<IndexBuffer, MAX_INDEX_BUFFERS>	index_buffers;
-Stack<Texture, MAX_TEXTURES>	textures;
-Stack<Uniform, MAX_UNIFORMS> uniforms;
-Stack<Program, MAX_SHADER_PROGRAMS>	programs;
+ResourceList<RenderLayer, MAX_RENDER_LAYERS>	layers;
+ResourceList<VertexBuffer, MAX_VERTEX_BUFFERS>	vertex_buffers;
+ResourceList<IndexBuffer, MAX_INDEX_BUFFERS>	index_buffers;
+ResourceList<Texture, MAX_TEXTURES>	textures;
+ResourceList<Uniform, MAX_UNIFORMS> uniforms;
+ResourceList<Program, MAX_SHADER_PROGRAMS>	programs;
 
 //TODO: Implement this stuff
 GLuint transient_vertex_buffer;
@@ -551,6 +605,7 @@ private:
 };
 
 CommandBuffer pre_buffer;
+CommandBuffer post_buffer;
 
 class UniformBuffer
 {
@@ -934,7 +989,7 @@ const MemoryBlock* render::LoadShaderFile(const char* file)
 
 LayerHandle render::CreateLayer()
 {
-	auto layer = layers.Push();
+	auto layer = layers.Create();
 	LayerHandle result{ layer.index };
 	*layer.obj = RenderLayer{};
 	return result;
@@ -1063,7 +1118,7 @@ namespace {
 				programs[data->index].uniforms.Add(hash, loc);
 
 
-				auto uni = uniforms.Push();
+				auto uni = uniforms.Create();
 				uni.obj->hash = hash;
 				strcpy_s(uni.obj->name, uniform_name_buffer);
 				uni.obj->type = UniformTypeFromEnum(type);
@@ -1080,7 +1135,7 @@ namespace {
 
 ProgramHandle render::CreateProgram(const MemoryBlock* vertex_shader, const MemoryBlock* frag_shader)
 {
-	auto program = programs.Push();
+	auto program = programs.Create();
 	ProgramHandle result{ program.index };
 	
 	auto cmd = pre_buffer.Add<CreateProgramCmd>();
@@ -1098,7 +1153,10 @@ unsigned int render::GetNumUniforms(ProgramHandle h)
 
 int render::GetProgramUniforms(ProgramHandle h, UniformHandle* buffer, int size)
 {
-	memcpy_s(buffer, size * sizeof(UniformHandle), programs[h.index].uniform_handles, programs[h.index].num_uniforms*sizeof(UniformHandle));
+	memcpy_s(buffer, 
+		size * sizeof(UniformHandle), 
+		programs[h.index].uniform_handles, 
+		programs[h.index].num_uniforms*sizeof(UniformHandle));
 	return programs[h.index].num_uniforms;
 }
 
@@ -1139,7 +1197,7 @@ namespace {
 
 VertexBufferHandle render::CreateVertexBuffer(const MemoryBlock* data, const VertexLayout& layout)
 {
-	auto vb = vertex_buffers.Push();
+	auto vb = vertex_buffers.Create();
 	VertexBufferHandle result{ vb.index };
 
 	auto cmd = pre_buffer.Add<CreateVertexBufferCmd>();
@@ -1176,7 +1234,7 @@ namespace {
 
 DynamicVertexBufferHandle render::CreateDynamicVertexBuffer(const MemoryBlock* data, const VertexLayout& layout)
 {
-	auto vb = vertex_buffers.Push();
+	auto vb = vertex_buffers.Create();
 	DynamicVertexBufferHandle result{ vb.index };
 	auto cmd = pre_buffer.Add<CreateDynamicVertexBufferCmd>();
 	cmd->block = data;
@@ -1276,7 +1334,7 @@ namespace {
 
 IndexBufferHandle render::CreateIndexBuffer(const MemoryBlock* data, IndexType type)
 {
-	auto ib = index_buffers.Push();
+	auto ib = index_buffers.Create();
 	IndexBufferHandle result{ ib.index };
 
 	auto cmd = pre_buffer.Add<CreateIndexBufferCmd>();
@@ -1334,7 +1392,7 @@ namespace {
 
 DynamicIndexBufferHandle render::CreateDynamicIndexBuffer(const MemoryBlock* data, IndexType type)
 {
-	auto ib = index_buffers.Push();
+	auto ib = index_buffers.Create();
 	DynamicIndexBufferHandle result{ ib.index };
 	
 	auto cmd = pre_buffer.Add<CreateDynamicIndexBufferCmd>();
@@ -1474,7 +1532,7 @@ namespace {
 
 TextureHandle render::CreateTexture2D(uint16_t width, uint16_t height, TextureFormat format, const MemoryBlock* data)
 {
-	auto tex = textures.Push();
+	auto tex = textures.Create();
 	
 	//TODO: Check that memory block is right size.
 
@@ -1524,7 +1582,7 @@ void render::UpdateTexture2D(TextureHandle handle, const MemoryBlock* data)
 
 UniformHandle render::CreateUniform(const char * name, UniformType type)
 {
-	auto uniform = uniforms.Push();
+	auto uniform = uniforms.Create();
 	UniformHandle result{ uniform.index };
 	rkg::MurmurHash murmur;
 	murmur.Add(name, strlen(name));
@@ -1548,14 +1606,39 @@ void render::SetUniform(UniformHandle handle, const void* data, int num)
 
 #pragma region Destroy Functions
 
-void	render::Destroy(LayerHandle) {}
+void render::Destroy(LayerHandle) {}
 
-void	render::Destroy(ProgramHandle h) 
+namespace
+{
+void DeleteProgram(Cmd*);
+struct DeleteProgramCmd : Cmd {
+	static constexpr DispatchFn DISPATCH = { DeleteProgram };
+	GLuint name;
+};
+void DeleteProgram(Cmd* cmd)
+{
+	auto data = reinterpret_cast<DeleteProgramCmd*>(cmd);
+	glDeleteProgram(data->name);
+}
+}
+
+void render::Destroy(ProgramHandle h) 
+{
+	auto cmd = post_buffer.Add<DeleteProgramCmd>();
+	cmd->name = programs[h.index].id;
+	//NOTE: Do I want to destroy all the uniforms associated with this program? Probably by default yes.
+	for (int i = 0; i < programs[h.index].num_uniforms; i++)
+	{
+		render::Destroy(programs[h.index].uniform_handles[i]);
+	}
+
+	programs.Remove(h.index);
+}
+
+void render::Destroy(VertexBufferHandle) 
 {
 	
 }
-
-void	render::Destroy(VertexBufferHandle) {}
 
 void	render::Destroy(DynamicVertexBufferHandle) {}
 
@@ -1565,7 +1648,10 @@ void	render::Destroy(DynamicIndexBufferHandle) {}
 
 void	render::Destroy(TextureHandle) {}
 
-void	render::Destroy(UniformHandle) {}
+void render::Destroy(UniformHandle h) 
+{
+	uniforms.Remove(h.index);
+}
 
 #pragma endregion
 
@@ -1945,5 +2031,8 @@ void render::Render()
 	
 	key_index[back_buffer] = 0;
 	uniform_buffer[back_buffer].Clear();
+
+	post_buffer.Execute();
+
 	FreeMemory();
 }
