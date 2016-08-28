@@ -6,7 +6,7 @@
 
 #include <string>
 #include <vector>
-
+#include <ctime>
 /*
 Unsure about api for some of these - dealing with a lot of strings. Could do this a couple of ways. 
 If I use the STL, its easy - return a bunch of vectors of strings, no problem. Obviously not great for memory allocation.
@@ -26,4 +26,6 @@ basically one long char array, that I separate by null. That can wait, though it
 namespace rkg 
 {
 	std::vector<std::string> GetDirectoryListing(const char* path, bool files = true, bool folders = true);
+
+	time_t GetFileEditedTime(const char* path);//Returns time that the file was last edited/modified.
 }

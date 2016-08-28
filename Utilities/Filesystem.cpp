@@ -33,4 +33,31 @@ namespace rkg
 #error "Filesystem not supported on this platform. Working on it."
 #endif
 	}
+
+	time_t GetFileEditedTime(const char* path)
+	{
+#ifdef _WIN32
+		auto file = CreateFile(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, 
+			nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+
+		FILETIME edit_time;
+		bool success = GetFileTime(file, nullptr, nullptr, &edit_time);
+		CloseHandle(file);
+		if (!success) {
+			return 0;
+		}
+		
+
+		//Convert to time_t, based on https://support.microsoft.com/en-ca/kb/167296
+		//Win_time = time_t * 10000000 + 116444736000000000
+		ULARGE_INTEGER large_int;
+		large_int.HighPart = edit_time.dwHighDateTime;
+		large_int.LowPart = edit_time.dwLowDateTime;
+		uint64_t win_time = large_int.QuadPart;
+		time_t result = (win_time - 116444736000000000) / 10000000;
+		return result;
+#else
+#error "Filesystem not supported on this platform."
+#endif
+	}
 }
