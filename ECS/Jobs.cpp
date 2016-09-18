@@ -146,9 +146,9 @@ namespace job {
 					Finish(job->parent);
 				}
 
-				int32_t num_dependencies = job->num_dependencies;
+				int32_t num_dependencies = job->num_continuations;
 				for (int i = 0; i < num_dependencies; i++) {
-					Run(job->dependency[i]);
+					Run(job->continuations[i]);
 				}
 			}
 		}
@@ -200,8 +200,8 @@ namespace job {
 	{
 		//Worried about a race condition here - what if the job is Finished while this is added?
 		//Dependencies should only be added from within the Job Function, then its safe.
-		const int32_t i = job->num_dependencies.fetch_add(1);
-		job->dependency[i] = dependency;
+		const int32_t i = job->num_continuations.fetch_add(1);
+		job->continuations[i] = dependency;
 	}
 
 	void InitializeQueue(const unsigned int num_worker_threads)

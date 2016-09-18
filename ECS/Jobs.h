@@ -16,8 +16,8 @@ namespace job {
 		JobFunction	fcn;
 		Job*	parent{ nullptr };
 		std::atomic<int32_t> unfinished_jobs{ 0 };
-		std::atomic<int32_t> num_dependencies{ 0 };
-		Job* dependency[8];
+		std::atomic<int32_t> num_continuations{ 0 };
+		Job* continuations[8];
 		union { //Can store a bit of extra data, or a pointer to whatever data you need.
 			void* user_ptr{ nullptr };
 			char user_data[16];
@@ -31,7 +31,7 @@ namespace job {
 	Job* CreateJob(Job::JobFunction function);
 	Job* CreateJobAsChild(Job* parent, Job::JobFunction function);
 	
-	void AddDependency(Job* job, Job* dependency);
+	void AddContinuation(Job* job, Job* continuation);
 	
 	void InitializeQueue(const unsigned int num_worker_threads);
 	void Run(Job* job); //Add job to the job queue.
