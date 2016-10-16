@@ -556,11 +556,7 @@ ResourceList<Texture, MAX_TEXTURES>	textures;
 ResourceList<Uniform, MAX_UNIFORMS> uniforms;
 ResourceList<Program, MAX_SHADER_PROGRAMS>	programs;
 
-//TODO: Implement this stuff
-GLuint transient_vertex_buffer;
-GLuint transient_index_buffer;
-
-/*==================== Pre-rendering Command Buffer ====================*/
+/*==================== Pre/post-rendering Command Buffer ====================*/
 
 struct Cmd 
 {
@@ -569,39 +565,76 @@ struct Cmd
 };
 
 class CommandBuffer {
-public:
-
-template<typename T>
-inline T* Add() {
-	static_assert(std::is_base_of<Cmd, T>::value, "Adding invalid command");
-	std::lock_guard<std::mutex> lock(add_mutex_);
-	auto i = index_;
-	index_ += sizeof(T);
-	auto count = count_;
-	count_++;
-	ASSERT(i < buffer_.size());//If not, we're out of room.
-	auto cmd = reinterpret_cast<T*>(&buffer_[i]);
-	cmd->dispatch = T::DISPATCH;
-	cmd_indices_[count] = i;
-	return cmd;
-}
-
-void Execute() {
-	std::lock_guard<std::mutex> lock(add_mutex_);//Shouldn't let anyone write commands now.
-	for (unsigned int i = 0; i < count_; ++i) {
-		Cmd* cmd = reinterpret_cast<Cmd*>(&buffer_[cmd_indices_[i]]);
-		cmd->dispatch(cmd);
-	}
-	count_ = 0;
-	index_ = 0;
-}
-
 private:
 	std::mutex add_mutex_;
-	unsigned int count_;
-	unsigned int index_;
-	std::array<unsigned int, KILO(1)> cmd_indices_;
-	std::array<byte, KILO(4)> buffer_;//Allocate a 4k static buffer
+	std::atomic<unsigned int> write_pos_{ 0 };
+	std::atomic<unsigned int> write_index_{ 0 };
+	std::atomic<unsigned int> read_pos_{ 0 };
+	std::atomic<unsigned int> read_index_{ 0 };
+
+	constexpr static unsigned int SIZE{ KILO(4) };
+	constexpr static unsigned int CAPACITY{ KILO(1) };
+	std::array<unsigned int, CAPACITY> cmd_indices_;
+	std::array<byte, SIZE> buffer_;//Allocate a 4k static buffer
+
+public:
+
+inline unsigned int GetWritePosition()
+{
+	//NB: Lock guard probably not needed. 
+	std::lock_guard<std::mutex> lock(add_mutex_);
+	return write_index_;
+}
+
+void Execute(unsigned int end)
+{//Assumption: This will only be called by the reader thread.
+
+
+	for (unsigned int i = read_index_; i < end; i++, read_index_.fetch_add(1))
+	{
+		read_pos_ = cmd_indices_[i % CAPACITY];
+		Cmd* cmd = reinterpret_cast<Cmd*>(&buffer_[cmd_indices_[i % CAPACITY] % SIZE]);
+		cmd->dispatch(cmd);
+	}
+}
+
+template<typename T>
+inline bool Push(const T& t)
+{
+	static_assert(std::is_base_of<Cmd, T>::value, "Adding invalid command");
+	//We're strictly single-reader/singe-consumer right now.
+	//This lock makes us safe to have multiple-readers/single-consumer.
+	std::lock_guard<std::mutex> lock(add_mutex_);
+	unsigned int wpos = write_pos_;
+	unsigned int windex = write_index_;
+
+	//Check to make sure this command fits before the end, 
+	//since I'm doing a dumb memcpy.
+	if ((wpos % SIZE) + sizeof(T) > SIZE)
+	{
+		wpos = wpos + SIZE - (wpos % SIZE);
+	}
+	//Check that there's room in the queue.
+	if (windex == read_index_ + CAPACITY)
+	{
+		return false;
+	}
+	if (wpos + sizeof(T) > read_pos_ + SIZE)
+	{//NB: read_pos_ does an atomic read - should be okay.
+		return false;
+	}
+
+	//There's room, copy the data. 
+	memcpy(&buffer_[wpos % SIZE], &t, sizeof(T));
+	auto cmd = reinterpret_cast<T*>(&buffer_[wpos % SIZE]);
+	cmd->dispatch = T::DISPATCH;
+	cmd_indices_[windex % CAPACITY] = wpos;
+
+	//Finally, increment the buffer pointer, indicating that an item has been added.
+	write_pos_.exchange(wpos + sizeof(T));
+	write_index_.exchange(windex + 1);
+	return true;
+}
 };
 
 CommandBuffer pre_buffer;
@@ -918,9 +951,10 @@ namespace {
 
 void render::Resize(int w, int h)
 {
-	auto cmd = pre_buffer.Add<ResizeCmd>();
-	cmd->w = w;
-	cmd->h = h;
+	ResizeCmd cmd;
+	cmd.w = w;
+	cmd.h = h;
+	pre_buffer.Push(cmd);
 }
 
 #pragma region Memory Management
@@ -1138,10 +1172,13 @@ ProgramHandle render::CreateProgram(const MemoryBlock* vertex_shader, const Memo
 	auto program = programs.Create();
 	ProgramHandle result{ program.index };
 	
-	auto cmd = pre_buffer.Add<CreateProgramCmd>();
-	cmd->vert_shader = vertex_shader;
-	cmd->frag_shader = frag_shader;
-	cmd->index = program.index;
+
+	CreateProgramCmd cmd;
+	cmd.vert_shader = vertex_shader;
+	cmd.frag_shader = frag_shader;
+	cmd.index = program.index;
+	pre_buffer.Push(cmd);
+	
 	
 	return result;
 }
@@ -1200,9 +1237,12 @@ VertexBufferHandle render::CreateVertexBuffer(const MemoryBlock* data, const Ver
 	auto vb = vertex_buffers.Create();
 	VertexBufferHandle result{ vb.index };
 
-	auto cmd = pre_buffer.Add<CreateVertexBufferCmd>();
-	cmd->block = data;
-	cmd->index = vb.index;
+
+	CreateVertexBufferCmd cmd;
+	cmd.block = data;
+	cmd.index = vb.index;
+	pre_buffer.Push(cmd);
+	
 	//NOTE: It might be better to move this stuff to the CmdBuffer. A little more memory being copied for a bit fewer memory accesses.
 	vb.obj->layout = layout;
 	return result;
@@ -1236,9 +1276,13 @@ DynamicVertexBufferHandle render::CreateDynamicVertexBuffer(const MemoryBlock* d
 {
 	auto vb = vertex_buffers.Create();
 	DynamicVertexBufferHandle result{ vb.index };
-	auto cmd = pre_buffer.Add<CreateDynamicVertexBufferCmd>();
-	cmd->block = data;
-	cmd->index = vb.index;
+	
+	CreateDynamicVertexBufferCmd cmd;
+	cmd.block = data;
+	cmd.index = vb.index;
+
+	pre_buffer.Push(cmd);
+	
 
 	vb.obj->layout = layout;
 	return result;
@@ -1283,10 +1327,13 @@ namespace {
 
 void render::UpdateDynamicVertexBuffer(DynamicVertexBufferHandle handle, const MemoryBlock* data, const ptrdiff_t offset)
 {
-	auto cmd = pre_buffer.Add<UpdateDynamicVertexBufferCmd>();
-	cmd->block = data;
-	cmd->offset = offset;
-	cmd->vb = handle;
+	UpdateDynamicVertexBufferCmd cmd;
+	cmd.block = data;
+	cmd.offset = offset;
+	cmd.vb = handle;
+
+	pre_buffer.Push(cmd);
+	
 }
 
 #pragma endregion
@@ -1337,10 +1384,12 @@ IndexBufferHandle render::CreateIndexBuffer(const MemoryBlock* data, IndexType t
 	auto ib = index_buffers.Create();
 	IndexBufferHandle result{ ib.index };
 
-	auto cmd = pre_buffer.Add<CreateIndexBufferCmd>();
-	cmd->block = data;
-	cmd->type = type;
-	cmd->index = ib.index;
+	CreateIndexBufferCmd cmd;
+	cmd.block = data;
+	cmd.type = type;
+	cmd.index = ib.index;
+	pre_buffer.Push(cmd);
+	
 
 	*ib.obj = IndexBuffer{};
 	return result;
@@ -1395,10 +1444,12 @@ DynamicIndexBufferHandle render::CreateDynamicIndexBuffer(const MemoryBlock* dat
 	auto ib = index_buffers.Create();
 	DynamicIndexBufferHandle result{ ib.index };
 	
-	auto cmd = pre_buffer.Add<CreateDynamicIndexBufferCmd>();
-	cmd->block = data;
-	cmd->type = type;
-	cmd->index = ib.index;
+	CreateDynamicIndexBufferCmd cmd;
+	cmd.block = data;
+	cmd.type = type;
+	cmd.index = ib.index;
+	pre_buffer.Push(cmd);
+	
 	*ib.obj = IndexBuffer{};
 	return result;
 }
@@ -1456,10 +1507,11 @@ namespace {
 
 void render::UpdateDynamicIndexBuffer(DynamicIndexBufferHandle handle, const MemoryBlock* data, const ptrdiff_t offset)
 {
-	auto cmd = pre_buffer.Add<UpdateDynamicIndexBufferCmd>();
-	cmd->block = data;
-	cmd->offset = offset;
-	cmd->ib = handle;
+	UpdateDynamicIndexBufferCmd cmd;
+	cmd.block = data;
+	cmd.offset = offset;
+	cmd.ib = handle;
+	pre_buffer.Push(cmd);
 }
 
 #pragma endregion
@@ -1535,14 +1587,15 @@ TextureHandle render::CreateTexture2D(uint16_t width, uint16_t height, TextureFo
 	auto tex = textures.Create();
 	
 	//TODO: Check that memory block is right size.
+	CreateTextureCmd cmd;
+	cmd.block = data;
+	cmd.format = format;
+	cmd.width = width;
+	cmd.height = height;
+	cmd.target = GL_TEXTURE_2D;
+	cmd.index = tex.index;
+	pre_buffer.Push(cmd);
 
-	auto cmd = pre_buffer.Add<CreateTextureCmd>();
-	cmd->block = data;
-	cmd->format = format;
-	cmd->width = width;
-	cmd->height = height;
-	cmd->target = GL_TEXTURE_2D;
-	cmd->index = tex.index;
 
 	return TextureHandle{ tex.index };
 }
@@ -1572,9 +1625,11 @@ namespace {
 
 void render::UpdateTexture2D(TextureHandle handle, const MemoryBlock* data)
 {
-	auto cmd = pre_buffer.Add<UpdateTextureCmd>();
-	cmd->block = data;
-	cmd->handle = handle;
+	UpdateTextureCmd cmd;
+	cmd.block = data;
+	cmd.handle = handle;
+	pre_buffer.Push(cmd);
+	
 }
 #pragma endregion
 
@@ -1624,8 +1679,10 @@ void DeleteProgram(Cmd* cmd)
 
 void render::Destroy(ProgramHandle h) 
 {
-	auto cmd = post_buffer.Add<DeleteProgramCmd>();
-	cmd->name = programs[h.index].id;
+	DeleteProgramCmd cmd;
+	cmd.name = programs[h.index].id;
+	post_buffer.Push(cmd);
+	
 	//NOTE: Do I want to destroy all the uniforms associated with this program? Probably by default yes.
 	for (int i = 0; i < programs[h.index].num_uniforms; i++)
 	{
@@ -1751,8 +1808,34 @@ void render::Submit(LayerHandle layer, ProgramHandle program, uint32_t depth, bo
 	previous_frame = frame;
 }
 
+namespace
+{
+	std::atomic_bool render_thread_active;
+	std::atomic_bool frame_ready;
+
+	void RenderLoop()
+	{
+		while (render_thread_active)
+		{
+			if (frame_ready)
+			{
+				Render();
+				frame_ready = false;
+			}
+			else if (false/*Query buffer has item in it*/)
+			{
+
+			}
+		}
+	}
+}
+
+
 void render::Render()
 {
+	auto pre_buffer_end = pre_buffer.GetWritePosition();
+	auto post_buffer_end = post_buffer.GetWritePosition();
+
 	unsigned int back_buffer=0;
 	{
 		std::lock_guard<std::shared_mutex> lock(render_buffer_mutex);
@@ -1760,7 +1843,7 @@ void render::Render()
 		frame++;
 	}
 	//Do any pre-render stuff wrt resources that need management.
-	pre_buffer.Execute();
+	pre_buffer.Execute(pre_buffer_end);
 
 	SortKeys(back_buffer);
 
@@ -2032,7 +2115,7 @@ void render::Render()
 	key_index[back_buffer] = 0;
 	uniform_buffer[back_buffer].Clear();
 
-	post_buffer.Execute();
+	post_buffer.Execute(post_buffer_end);
 
 	FreeMemory();
 }
