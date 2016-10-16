@@ -5,7 +5,7 @@
 #include "Utilities/Utilities.h"
 
 namespace rkg {
-namespace job {
+namespace ecs {
 	namespace {
 		std::array<Job, MAX_NUM_JOBS> global_job_list;
 		std::atomic<uint32_t> job_allocation_index;
@@ -196,7 +196,7 @@ namespace job {
 		return job;
 	}
 
-	void AddDependency(Job* job, Job* dependency)
+	void AddContinuation(Job* job, Job* dependency)
 	{
 		//Worried about a race condition here - what if the job is Finished while this is added?
 		//Dependencies should only be added from within the Job Function, then its safe.

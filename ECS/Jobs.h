@@ -8,7 +8,7 @@
 #include <atomic>
 
 namespace rkg {
-namespace job {
+namespace ecs {
 
 	struct alignas(64) Job {
 		using JobFunction = void(*)(Job*);
@@ -39,5 +39,5 @@ namespace job {
 	void ShutdownQueue(); //Does not flush queue.
 
 
-}//namespace job
+}//namespace ecs
 }//namespace rkg;
