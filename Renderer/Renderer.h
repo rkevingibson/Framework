@@ -15,6 +15,7 @@
 /*Enables some debug information - less efficient, stores some strings it otherwise wouldn't keep.*/
 #define RENDER_DEBUG
 
+struct GLFWwindow;
 
 namespace render {
 
@@ -205,7 +206,7 @@ namespace render {
 
 	using ErrorCallbackFn = void(*)(const char* msg);
 
-	void Initialize();
+	void Initialize(GLFWwindow* window);
 	void SetErrorCallback(ErrorCallbackFn f);
 	void Resize(int w, int h);
 
@@ -287,6 +288,7 @@ namespace render {
 
 	//Submit a draw call using the currently bound buffers.
 	void Submit(LayerHandle layer, ProgramHandle program, uint32_t depth = 0, bool preserve_state = false);
+	void EndFrame();//Submit frame to render thread.
 	void Render();//Submit the frame to the renderer.
 
 

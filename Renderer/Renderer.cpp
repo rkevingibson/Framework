@@ -11,6 +11,7 @@
 #include <algorithm>
 #include "../Utilities/Utilities.h"
 #include "../Utilities/MurmurHash.h"
+#include "../External/GLFW/glfw3.h"
 
 using namespace render;
 
@@ -173,9 +174,12 @@ namespace {
 
 		GL_FUNCTION_LIST
 #undef GLX
+
 #else 
 #error "Open GL loading not implemented for this platform yet."
 #endif //_Win32
+
+
 
 		return true;
 	}
@@ -908,27 +912,6 @@ namespace {
 
 #pragma endregion
 
-void render::Initialize()
-{
-	LoadGLFunctions();
-
-#ifdef RENDER_DEBUG
-	glDebugMessageCallback(GLErrorCallback, nullptr);
-	glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
-#endif
-
-	glEnable(GL_DEPTH_TEST);
-	//glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-	glEnable(GL_SCISSOR_TEST);
-	glEnable(GL_BLEND);
-	glBlendEquation(GL_FUNC_ADD);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	glEnable(GL_CULL_FACE);
-	glCullFace(GL_BACK);
-
-	CreateLayer();
-	return;
-}
 
 void render::SetErrorCallback(ErrorCallbackFn f)
 {
@@ -1813,13 +1796,40 @@ namespace
 	std::atomic_bool render_thread_active;
 	std::atomic_bool frame_ready;
 
-	void RenderLoop()
+
+	struct {
+		unsigned int pre_buffer_end;
+		unsigned int post_buffer_end;
+	} FrameData;
+
+	void RenderLoop(GLFWwindow* window)
 	{
+
+		glfwMakeContextCurrent(window);
+		LoadGLFunctions();
+
+#ifdef RENDER_DEBUG
+		glDebugMessageCallback(GLErrorCallback, nullptr);
+		glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+#endif
+
+		glEnable(GL_DEPTH_TEST);
+		//glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+		glEnable(GL_SCISSOR_TEST);
+		glEnable(GL_BLEND);
+		glBlendEquation(GL_FUNC_ADD);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		glEnable(GL_CULL_FACE);
+		glCullFace(GL_BACK);
+
+		CreateLayer();
+		render_thread_active = true;
 		while (render_thread_active)
 		{
 			if (frame_ready)
 			{
 				Render();
+				glfwSwapBuffers(window);
 				frame_ready = false;
 			}
 			else if (false/*Query buffer has item in it*/)
@@ -1830,11 +1840,29 @@ namespace
 	}
 }
 
+void render::Initialize(GLFWwindow* window)
+{
+	glfwMakeContextCurrent(nullptr);
+	std::thread render_thread(RenderLoop, window);
+	render_thread.detach();
+	return;
+}
+
+
+void render::EndFrame()
+{
+	while (frame_ready)//Renderer is already working. Later, replace this with a multi-frame queue, where we can drop frames if they take too long.
+	{
+		std::this_thread::yield();
+	}
+	FrameData.pre_buffer_end = pre_buffer.GetWritePosition();
+	FrameData.post_buffer_end = post_buffer.GetWritePosition();
+
+	frame_ready = true;
+}
 
 void render::Render()
 {
-	auto pre_buffer_end = pre_buffer.GetWritePosition();
-	auto post_buffer_end = post_buffer.GetWritePosition();
 
 	unsigned int back_buffer=0;
 	{
@@ -1843,7 +1871,7 @@ void render::Render()
 		frame++;
 	}
 	//Do any pre-render stuff wrt resources that need management.
-	pre_buffer.Execute(pre_buffer_end);
+	pre_buffer.Execute(FrameData.pre_buffer_end);
 
 	SortKeys(back_buffer);
 
@@ -2115,7 +2143,7 @@ void render::Render()
 	key_index[back_buffer] = 0;
 	uniform_buffer[back_buffer].Clear();
 
-	post_buffer.Execute(post_buffer_end);
+	post_buffer.Execute(FrameData.post_buffer_end);
 
 	FreeMemory();
 }
