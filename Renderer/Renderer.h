@@ -202,6 +202,7 @@ namespace render {
 	{
 		void * data;
 		uint32_t size;
+		uint64_t frame_to_delete; //Free the memory at the end of this frame.
 	};
 
 	using ErrorCallbackFn = void(*)(const char* msg);

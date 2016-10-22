@@ -5,8 +5,8 @@
 #include <type_traits>
 #include <array>
 #include <atomic>
+#include <queue.>
 #include <mutex>
-#include <shared_mutex>
 #include <cstddef>
 #include <algorithm>
 #include "../Utilities/Utilities.h"
@@ -251,43 +251,47 @@ namespace {
 	public:
 		uint32_t Write(const void* data, const uint32_t num)
 		{
-			Expects(current_pos_ + num < Size);
-			memcpy(&buffer_[current_pos_], data, num);
-			current_pos_ += num;
-			return current_pos_;
+			Expects(write_pos_ + num < Size);
+			memcpy(&buffer_[write_pos_], data, num);
+			write_pos_ += num;
+			return write_pos_;
 		}
 
 		template<typename T>
 		T Read()
 		{
 			static_assert(std::is_arithmetic<T>::value, "Requires arithmetic type.");
-			Expects(current_pos_ + sizeof(T) < Size && "Insufficient data to read type");
-			auto result = reinterpret_cast<T*>(&buffer_[current_pos_]);
-			current_pos_ += sizeof(T);
+			Expects(read_pos_ + sizeof(T) < Size && "Insufficient data to read type");
+			auto result = reinterpret_cast<T*>(&buffer_[read_pos_]);
+			read_pos_ += sizeof(T);
 			return *result;
 		}
 
-		byte* GetPtr() { return &buffer_[current_pos_]; }
+		byte* GetPtr() { return &buffer_[read_pos_]; }
 
 		void Seek(const uint32_t pos)
 		{
 			Expects(pos < Size);
-			current_pos_ = pos;
+			read_pos_ = pos;
 		}
 
 		void Skip(const uint32_t num)
 		{
-			current_pos_ += num;
+			read_pos_ += num;
 		}
-		uint32_t GetPos() { return current_pos_; }
+
+		uint32_t GetWritePos() { return write_pos_; }
+		uint32_t GetReadPos() { return read_pos_; }
 
 		void Clear()
 		{
-			current_pos_ = 0;
+			write_pos_ = 0;
+			read_pos_ = 0;
 			memset(buffer_.data(), 0, buffer_.size());
 		}
 	private:
-		uint32_t current_pos_;
+		uint32_t write_pos_;
+		uint32_t read_pos_;
 		std::array<byte, Size> buffer_;
 	};
 
@@ -517,7 +521,7 @@ struct ComputeCmd : public RenderCmd
 #pragma endregion
 //I need some queues. First off, a queue for the draw cmds. 
 //These are double-buffered, to allow submission while rendering.
-uint64_t frame;
+std::atomic<uint64_t> frame;
 ErrorCallbackFn error_callback;
 
 struct EncodedKey{
@@ -535,7 +539,6 @@ thread_local std::array<DrawCmd, MAX_DRAWS_PER_THREAD> render_buffer[2];
 #pragma endregion
 
 std::atomic<unsigned int> key_index[2]{ 0,0 };
-std::shared_mutex render_buffer_mutex;
 std::atomic<unsigned int> front_buffer{ 0 };//Which of the current buffers are you submitting to this frame.
 
 void SortKeys(unsigned int buffer)
@@ -670,7 +673,7 @@ public:
 	void Execute(Program* program, uint32_t start, uint32_t end)
 	{
 		buffer_.Seek(start);
-		while (buffer_.GetPos() < end) {
+		while (buffer_.GetReadPos() < end) {
 			auto handle = buffer_.Read<decltype(UniformHandle::index)>();
 			auto type_num = buffer_.Read<uint8_t>();
 			auto num = buffer_.Read<uint8_t>();
@@ -723,6 +726,11 @@ public:
 				break;
 			}
 		}
+
+		if (buffer_.GetReadPos() == buffer_.GetWritePos())
+		{
+			buffer_.Clear();
+		}
 	}
 
 	void Clear()
@@ -730,7 +738,7 @@ public:
 		buffer_.Clear();
 	}
 
-	uint32_t GetPosition() { return buffer_.GetPos(); }
+	uint32_t GetWritePosition() { return buffer_.GetWritePos(); }
 private:
 	uint32_t Size(UniformType type) {
 		uint32_t type_size;
@@ -943,19 +951,82 @@ void render::Resize(int w, int h)
 #pragma region Memory Management
 /*==================== MEMORY MANAGEMENT ====================*/
 namespace {
-	std::array<MemoryBlock, 2048> blocks;
-	std::atomic<uint32_t> num_blocks{ 0 };
+	constexpr uint32_t NUM_MEMORY_BLOCKS = 2048;
+	std::array<MemoryBlock, NUM_MEMORY_BLOCKS> blocks;
+	
+	class FreeList
+	{
+	public:
+		inline void Push(uint32_t x)
+		{
+			//This function is only ever called from the render thread.
+			//Also, this queue will never overflow, so that's nice.
+			auto wp = write_pos_.fetch_add(1);
+			data_[wp % NUM_MEMORY_BLOCKS] = x;
+		}
+
+		inline uint32_t Pop()
+		{
+			//This function is called by a bunch of threads, so must be thread safe.
+			//I want to atomically read the read_pos, compare with wp, and if not equal, increment it. So it's a compare and swap thing
+			//But with them not being equal, which is a pain.
+			//Could I re-organize this? Do a fetch-add, which increments it for us. 
+			//If the queue was full, then we decrement it and we move along.
+			//If it's not full, we can do the read and return. That's fine.
+			//What if two are reading at the same time?
+			//WP could be different for each, and rp will be at most 1 apart. 
+			//BUT if wp changes, then the first could fail while the second succeeds.
+			//This could mean that we return something from the queue that becomes past read_pos, which is bad.
+			//So i need to test and add at the same time, adding only conditionally.
+			//That way, consecutive values of rp are guaranteed to be valid i think?
+			//So I test against wp. If it succeeds, then I'm full, and that's not ideal.
+			//If I fail, then they're not equal and I should increment.
+			//Screw it, I'll use a mutex for now.
+
+			std::lock_guard<std::mutex> lock(read_mutex_);
+			auto wp = write_pos_.load();
+			auto rp = read_pos_.load();
+			if (rp == wp ) //Queue is empty
+			{
+				return NUM_MEMORY_BLOCKS + 1;
+			}
+			else //Queue had room when I entered the function.
+			{
+				read_pos_++;
+				return data_[rp % NUM_MEMORY_BLOCKS];
+			}
+		}
+
+	private:
+		std::array<uint32_t, NUM_MEMORY_BLOCKS> data_;
+		std::atomic<uint32_t> write_pos_{ 0 };
+		std::atomic<uint32_t> read_pos_{ 0 };
+		std::mutex read_mutex_;
+
+	} freelist;
+	
+
+	//std::atomic<uint32_t> num_blocks{ 0 };
+
+	void InitializeMemory()
+	{
+		for (int i = 0; i < NUM_MEMORY_BLOCKS; i++)
+		{
+			freelist.Push(i);
+		}
+	}
 
 	void FreeMemory()
 	{
-		for (int i = 0; i < 2048; i++) {
+		for (int i = 0; i < NUM_MEMORY_BLOCKS; i++) {
 			
-			if (blocks[i].size != 0) {
+			if (blocks[i].size != 0 && blocks[i].frame_to_delete < frame) {
 				free(blocks[i].data);
+				blocks[i].size = 0;
+				freelist.Push(i);
 			}
-			blocks[i].size = 0;
 		}
-		num_blocks.store(0);
+		//num_blocks.store(0);
 	}
 }
 
@@ -963,15 +1034,21 @@ const MemoryBlock* render::Alloc(const uint32_t size)
 {
 	//For now, just allocate off the heap. 
 	//Later on, will have something better maybe.
+	auto block_index = freelist.Pop();
+	if (block_index > NUM_MEMORY_BLOCKS)
+	{
+		return nullptr;
+	}
+	
 	auto data = malloc(size);
 	if (data == nullptr) {
 		return  nullptr;
 	}
 
-	//TODO: Handle possibility of running out of memory blocks to allocate.
-	auto block_index = num_blocks.fetch_add(1);
+
 	blocks[block_index].data = data;
 	blocks[block_index].size = size;
+	blocks[block_index].frame_to_delete = frame + 2;
 	return &blocks[block_index];
 }
 
@@ -1634,8 +1711,6 @@ UniformHandle render::CreateUniform(const char * name, UniformType type)
 
 void render::SetUniform(UniformHandle handle, const void* data, int num)
 {
-	std::shared_lock<std::shared_mutex> lock(render_buffer_mutex);
-
 	auto type = uniforms[handle.index].type;
 	uniform_buffer[front_buffer].Add(handle, type, num, data);
 }
@@ -1746,8 +1821,6 @@ void render::SetScissor(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
 void render::Submit(LayerHandle layer, ProgramHandle program, uint32_t depth, bool preserve_state) 
 {
 	//TODO: Do we want these heavy locks? Or just require render gets called at sync point?
-	std::shared_lock<std::shared_mutex> lock(render_buffer_mutex);
-
 	//Create a sort key for this draw call
 	Key key;
 	key.bucket = layer.index;
@@ -1771,7 +1844,7 @@ void render::Submit(LayerHandle layer, ProgramHandle program, uint32_t depth, bo
 	
 	current_draw.program = program;
 	//Handle Uniforms
-	auto uniform_end = uniform_buffer[front_buffer].GetPosition();
+	auto uniform_end = uniform_buffer[front_buffer].GetWritePosition();
 	current_draw.uniform_buffer = &uniform_buffer[front_buffer];
 	current_draw.uniform_end = uniform_end;
 	//This stuff is thread local, so doesn't need to be atomic.
@@ -1795,7 +1868,7 @@ namespace
 {
 	std::atomic_bool render_thread_active;
 	std::atomic_bool frame_ready;
-
+	unsigned int back_buffer;
 
 	struct {
 		unsigned int pre_buffer_end;
@@ -1832,10 +1905,6 @@ namespace
 				glfwSwapBuffers(window);
 				frame_ready = false;
 			}
-			else if (false/*Query buffer has item in it*/)
-			{
-
-			}
 		}
 	}
 }
@@ -1843,6 +1912,9 @@ namespace
 void render::Initialize(GLFWwindow* window)
 {
 	glfwMakeContextCurrent(nullptr);
+	
+	InitializeMemory();
+	
 	std::thread render_thread(RenderLoop, window);
 	render_thread.detach();
 	return;
@@ -1855,21 +1927,20 @@ void render::EndFrame()
 	{
 		std::this_thread::yield();
 	}
+	//This is basically a sync point. So at this point, the render thread should be doing nothing.
 	FrameData.pre_buffer_end = pre_buffer.GetWritePosition();
 	FrameData.post_buffer_end = post_buffer.GetWritePosition();
 
+
+	back_buffer = front_buffer.fetch_xor(1);
+	frame++;
 	frame_ready = true;
 }
 
 void render::Render()
 {
 
-	unsigned int back_buffer=0;
-	{
-		std::lock_guard<std::shared_mutex> lock(render_buffer_mutex);
-		back_buffer = front_buffer.fetch_xor(1);
-		frame++;
-	}
+
 	//Do any pre-render stuff wrt resources that need management.
 	pre_buffer.Execute(FrameData.pre_buffer_end);
 
@@ -1889,7 +1960,7 @@ void render::Render()
 
 	int framebuffer_size[4];
 	glGetIntegerv(GL_VIEWPORT, framebuffer_size);
-	uint32_t scissor[4] = { 0,0, framebuffer_size[2], framebuffer_size[3] };
+	uint32_t scissor[4] = { 0u, 0u, framebuffer_size[2], framebuffer_size[3] };
 	glScissor(scissor[0], scissor[1], scissor[2], scissor[3]);
 
 
@@ -1913,7 +1984,7 @@ void render::Render()
 
 		//Update uniforms
 		cmd->uniform_buffer->Execute(program, cmd->uniform_start, cmd->uniform_end);
-
+		
 		//Set textures:
 		for (int tex_unit = 0; tex_unit < MAX_TEXTURE_UNITS; tex_unit++) {
 			if (cmd->textures[tex_unit].index != INVALID_HANDLE
@@ -2012,7 +2083,7 @@ void render::Render()
 				}
 			}
 
-			if ((raster_state ^ draw_cmd->render_state) & RenderState::PRIMITIVE_MASK != 0) 
+			if (((raster_state ^ draw_cmd->render_state) & RenderState::PRIMITIVE_MASK) != 0) 
 			{
 				constexpr GLenum primitive_types[] = {
 					GL_TRIANGLES,
@@ -2141,7 +2212,6 @@ void render::Render()
 	}
 	
 	key_index[back_buffer] = 0;
-	uniform_buffer[back_buffer].Clear();
 
 	post_buffer.Execute(FrameData.post_buffer_end);
 
