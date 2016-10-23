@@ -1875,6 +1875,286 @@ namespace
 		unsigned int post_buffer_end;
 	} FrameData;
 
+	void Render()
+	{
+		//Do any pre-render stuff wrt resources that need management.
+		pre_buffer.Execute(FrameData.pre_buffer_end);
+
+		SortKeys(back_buffer);
+
+		//Need to store the current state of the important stuff
+		IndexBufferHandle index_buffer_handle{ INVALID_HANDLE };
+		VertexBufferHandle vertex_buffer_handle{ INVALID_HANDLE };
+		ProgramHandle program_handle{ INVALID_HANDLE };
+
+		TextureHandle bound_textures[MAX_TEXTURE_UNITS];
+		for (int tex_unit = 0; tex_unit < MAX_TEXTURE_UNITS; tex_unit++) { bound_textures[tex_unit].index = INVALID_HANDLE; }
+		static uint64_t raster_state = RenderState::DEFAULT_STATE;
+		GLenum primitive_type = GL_TRIANGLES;
+
+		Program* program = 0;
+
+		int framebuffer_size[4];
+		glGetIntegerv(GL_VIEWPORT, framebuffer_size);
+		uint32_t scissor[4] = { 0u, 0u, framebuffer_size[2], framebuffer_size[3] };
+		glScissor(scissor[0], scissor[1], scissor[2], scissor[3]);
+
+
+		unsigned int num_commands = key_index[back_buffer];
+		glClearColor(0.f, 0.f, 0.f, 1.f);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		for (unsigned int command_index = 0; command_index < num_commands; command_index++) {
+			auto encoded_key = keys[back_buffer][command_index];
+
+			auto cmd = encoded_key.cmd;
+			auto key = Key::Decode(encoded_key.key);
+			bool indexed_draw = false;
+
+			//Set the program
+			if (cmd->program.index != program_handle.index) {
+				program = &programs[cmd->program.index];
+				glUseProgram(program->id);
+				program_handle = cmd->program;
+			}
+
+			//Update uniforms
+			cmd->uniform_buffer->Execute(program, cmd->uniform_start, cmd->uniform_end);
+
+			//Set textures:
+			for (int tex_unit = 0; tex_unit < MAX_TEXTURE_UNITS; tex_unit++) {
+				if (cmd->textures[tex_unit].index != INVALID_HANDLE
+					&& bound_textures[tex_unit].index != cmd->textures[tex_unit].index)
+				{
+					auto& tex = textures[cmd->textures[tex_unit].index];
+					glActiveTexture(GL_TEXTURE0 + tex_unit);
+					glBindTexture(tex.target, tex.name);
+					bound_textures[tex_unit] = cmd->textures[tex_unit];
+				}
+			}
+
+			//Compute commands handled here
+			if (key.compute)
+			{
+				auto compute_cmd = reinterpret_cast<ComputeCmd*>(cmd);
+				glDispatchCompute(compute_cmd->x, compute_cmd->y, compute_cmd->z);
+				continue;
+			}
+
+			//Everything else is a draw command
+			auto draw_cmd = reinterpret_cast<DrawCmd*>(cmd);
+
+			//Check view and update it
+
+			//Update rasterization state
+			if (raster_state != draw_cmd->render_state) //Raster state has changed.
+			{
+				//Depth test
+				if (((raster_state ^ draw_cmd->render_state) & RenderState::DEPTH_TEST_MASK) != 0)
+				{
+					//NOTE: This list has to match the order in the RenderState enum. I don't love that brittleness.
+					if ((raster_state & RenderState::DEPTH_TEST_MASK) == RenderState::DEPTH_TEST_OFF) {
+						glEnable(GL_DEPTH_TEST);
+					}
+
+					if ((draw_cmd->render_state & RenderState::DEPTH_TEST_MASK) == RenderState::DEPTH_TEST_OFF) {
+						glDisable(GL_DEPTH_TEST);
+					}
+					else
+					{
+						constexpr GLenum depth_funcs[] = { GL_LESS, GL_LEQUAL, GL_EQUAL, GL_GEQUAL,
+							GL_GREATER, GL_NOTEQUAL, GL_NEVER, GL_ALWAYS };
+						int depth_func_index = (draw_cmd->render_state & RenderState::DEPTH_TEST_MASK) >> RenderState::DEPTH_TEST_SHIFT;
+						if (depth_func_index != 0) {
+							glDepthFunc(depth_funcs[depth_func_index - 1]);
+						}
+					}
+				}
+
+				//Blending function
+				if (((raster_state ^ draw_cmd->render_state) & RenderState::BLEND_MASK) != 0)
+				{
+
+					constexpr GLenum blend_funcs[] = { GL_ZERO, GL_ONE, GL_SRC_COLOR,
+						GL_ONE_MINUS_SRC_COLOR, GL_DST_COLOR, GL_ONE_MINUS_DST_COLOR,
+						GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_DST_ALPHA,
+						GL_ONE_MINUS_DST_ALPHA, GL_CONSTANT_COLOR, GL_ONE_MINUS_CONSTANT_COLOR,
+						GL_CONSTANT_ALPHA, GL_ONE_MINUS_CONSTANT_ALPHA, GL_SRC_ALPHA_SATURATE,
+						GL_SRC1_COLOR, GL_ONE_MINUS_SRC1_COLOR, GL_SRC1_ALPHA,
+						GL_ONE_MINUS_SRC1_ALPHA };
+					int blend_func_index = (draw_cmd->render_state & RenderState::BLEND_MASK) >> RenderState::BLEND_SHIFT;
+					if (blend_func_index != 0) {
+						glBlendFunc(GL_SRC_ALPHA, blend_funcs[blend_func_index - 1]);
+					}
+				}
+
+				//Blending Equation
+				if (((raster_state ^ draw_cmd->render_state) & RenderState::BLEND_EQUATION_MASK) != 0)
+				{
+
+					constexpr GLenum blend_eqs[] = { GL_FUNC_ADD, GL_FUNC_SUBTRACT, GL_FUNC_REVERSE_SUBTRACT, GL_MIN, GL_MAX };
+					int blend_eq_index = (draw_cmd->render_state & RenderState::BLEND_EQUATION_MASK) >> RenderState::BLEND_EQUATION_SHIFT;
+					if (blend_eq_index != 0) {
+						glBlendEquation(blend_eqs[blend_eq_index - 1]);
+					}
+				}
+
+				//Culling settings
+				if (((raster_state ^ draw_cmd->render_state) & RenderState::CULL_MASK) != 0)
+				{
+					//Culling state
+					auto cull_state = draw_cmd->render_state & RenderState::CULL_MASK;
+					if ((raster_state & RenderState::CULL_MASK) == RenderState::CULL_OFF) {
+						glEnable(GL_CULL_FACE);
+					}
+					else if (cull_state == RenderState::CULL_OFF) {
+						glDisable(GL_CULL_FACE);
+					}
+
+					if (cull_state == RenderState::CULL_CW) {
+						glFrontFace(GL_CW);
+					}
+					else if (cull_state == RenderState::CULL_CCW) {
+						glFrontFace(GL_CCW);
+					}
+				}
+
+				if (((raster_state ^ draw_cmd->render_state) & RenderState::PRIMITIVE_MASK) != 0)
+				{
+					constexpr GLenum primitive_types[] = {
+						GL_TRIANGLES,
+						GL_TRIANGLE_STRIP,
+						GL_TRIANGLE_FAN,
+						GL_POINTS,
+						GL_LINE_STRIP,
+						GL_LINE_LOOP,
+						GL_LINES,
+						GL_PATCHES
+					};
+					const int primitive_index = (draw_cmd->render_state & RenderState::PRIMITIVE_MASK) >> RenderState::PRIMITIVE_SHIFT;
+					primitive_type = primitive_types[primitive_index];
+				}
+				raster_state = draw_cmd->render_state;
+			}
+
+			//Update scissoring
+			if (draw_cmd->scissor[2] == UINT32_MAX) {
+				draw_cmd->scissor[2] = framebuffer_size[2];
+			}
+			if (draw_cmd->scissor[3] == UINT32_MAX) {
+				draw_cmd->scissor[3] = framebuffer_size[3];
+			}
+			if (std::memcmp(scissor, draw_cmd->scissor, sizeof(scissor)) != 0)
+			{
+				glScissor(draw_cmd->scissor[0], draw_cmd->scissor[1], draw_cmd->scissor[2], draw_cmd->scissor[3]);
+				std::memcpy(scissor, draw_cmd->scissor, sizeof(scissor));
+			}
+
+			//VAOs - lookup the appropriate one, create it if necessary.
+			{
+				if (index_buffer_handle.index != draw_cmd->index_buffer ||
+					vertex_buffer_handle.index != draw_cmd->vertex_buffer)
+				{
+					vertex_buffer_handle = VertexBufferHandle{ draw_cmd->vertex_buffer };
+					index_buffer_handle = IndexBufferHandle{ draw_cmd->index_buffer };
+					//Compute hash
+					rkg::MurmurHash hash;
+					hash.Add(draw_cmd->vertex_buffer);
+					hash.Add(draw_cmd->index_buffer);
+					auto vao_hash = hash.Finish();
+
+					//Attempt to lookup vao.
+					static GLCache<MAX_VERTEX_ARRAY_OBJECTS> vao_cache;
+					auto vao = vao_cache.Get(vao_hash);
+					if (vao != vao_cache.INVALID_INDEX) {
+						glBindVertexArray(vao);
+					}
+					else {
+						//Create a new VAO for this data.
+						glGenVertexArrays(1, &vao);
+						vao_cache.Add(vao_hash, vao);
+						glBindVertexArray(vao);
+						auto& vertex_buffer = vertex_buffers[draw_cmd->vertex_buffer];
+
+
+						auto& vertex_layout = vertex_buffer.layout;
+						glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer.buffer);
+
+						if (draw_cmd->index_buffer != INVALID_HANDLE) {
+							auto& index_buffer = index_buffers[draw_cmd->index_buffer];
+							glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, index_buffer.buffer);
+						}
+						auto vertex_size = vertex_layout.SizeOfVertex();
+						for (int i = 0; i < vertex_layout.num_attributes; i++) {
+							auto attrib_loc = glGetAttribLocation(program->id, vertex_layout.names[i]);
+							/*
+							Pack attribute info into 8 bits:
+							76543210
+							xnttttss
+							x - reserved
+							n - normalized
+							t - type
+							s - number
+							*/
+							auto attrib = vertex_layout.attribs[i];
+							bool normalized = (attrib & 0x40) >> 6;
+							GLuint size = (attrib & 0x03) + 1;
+							auto type = (VertexLayout::AttributeType::Enum)((attrib & 0x3C) >> 2);
+
+							glVertexAttribPointer(attrib_loc, size, GetGLEnum(type), normalized, vertex_size, (void*)vertex_layout.offset[i]);
+							glEnableVertexAttribArray(attrib_loc);
+						}
+					}
+				}
+			}
+
+			//Draw.
+			if (index_buffer_handle.index != INVALID_HANDLE) {
+				auto& ib = index_buffers[index_buffer_handle.index];
+
+				unsigned int offset = draw_cmd->index_offset;
+				if (draw_cmd->index_offset != 0) {
+					switch (ib.type)
+					{
+					case GL_UNSIGNED_SHORT:
+						offset *= 2;
+						break;
+					case GL_UNSIGNED_INT:
+						offset *= 4;
+						break;
+					default:
+						break;
+					}
+				}
+				auto num_elements = ib.num_elements - offset;
+				if (draw_cmd->index_count != UINT32_MAX) {
+					num_elements = draw_cmd->index_count;
+				}
+
+				glDrawElementsBaseVertex(primitive_type, num_elements,
+					ib.type,
+					(GLvoid*)(offset),
+					draw_cmd->vertex_offset);
+			}
+			else {
+				//NOTE: Take a look, vertex offset might have the same problem as index offset did.
+				auto& vb = vertex_buffers[vertex_buffer_handle.index];
+				auto num_verts = vb.size / vb.layout.SizeOfVertex();
+				if (draw_cmd->vertex_count != UINT32_MAX) {
+					num_verts = draw_cmd->vertex_count;
+				}
+				glDrawArrays(primitive_type, draw_cmd->vertex_offset, num_verts);
+			}
+		}
+
+		key_index[back_buffer] = 0;
+
+		post_buffer.Execute(FrameData.post_buffer_end);
+
+		FreeMemory();
+	}
+
+
 	void RenderLoop(GLFWwindow* window)
 	{
 
@@ -1920,7 +2200,6 @@ void render::Initialize(GLFWwindow* window)
 	return;
 }
 
-
 void render::EndFrame()
 {
 	while (frame_ready)//Renderer is already working. Later, replace this with a multi-frame queue, where we can drop frames if they take too long.
@@ -1931,289 +2210,7 @@ void render::EndFrame()
 	FrameData.pre_buffer_end = pre_buffer.GetWritePosition();
 	FrameData.post_buffer_end = post_buffer.GetWritePosition();
 
-
 	back_buffer = front_buffer.fetch_xor(1);
 	frame++;
 	frame_ready = true;
-}
-
-void render::Render()
-{
-
-
-	//Do any pre-render stuff wrt resources that need management.
-	pre_buffer.Execute(FrameData.pre_buffer_end);
-
-	SortKeys(back_buffer);
-
-	//Need to store the current state of the important stuff
-	IndexBufferHandle index_buffer_handle{ INVALID_HANDLE};
-	VertexBufferHandle vertex_buffer_handle{ INVALID_HANDLE };
-	ProgramHandle program_handle{ INVALID_HANDLE };
-	
-	TextureHandle bound_textures[MAX_TEXTURE_UNITS];
-	for (int tex_unit = 0; tex_unit < MAX_TEXTURE_UNITS; tex_unit++) { bound_textures[tex_unit].index = INVALID_HANDLE; }
-	static uint64_t raster_state = RenderState::DEFAULT_STATE;
-	GLenum primitive_type = GL_TRIANGLES;
-
-	Program* program = 0;
-
-	int framebuffer_size[4];
-	glGetIntegerv(GL_VIEWPORT, framebuffer_size);
-	uint32_t scissor[4] = { 0u, 0u, framebuffer_size[2], framebuffer_size[3] };
-	glScissor(scissor[0], scissor[1], scissor[2], scissor[3]);
-
-
-	unsigned int num_commands = key_index[back_buffer];
-	glClearColor(0.f, 0.f, 0.f, 1.f);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-	for (unsigned int command_index = 0; command_index < num_commands; command_index++) {
-		auto encoded_key = keys[back_buffer][command_index];
-
-		auto cmd = encoded_key.cmd;
-		auto key = Key::Decode(encoded_key.key);
-		bool indexed_draw = false;
-
-		//Set the program
-		if (cmd->program.index != program_handle.index) {
-			program = &programs[cmd->program.index];
-			glUseProgram(program->id);
-			program_handle = cmd->program;
-		}
-
-		//Update uniforms
-		cmd->uniform_buffer->Execute(program, cmd->uniform_start, cmd->uniform_end);
-		
-		//Set textures:
-		for (int tex_unit = 0; tex_unit < MAX_TEXTURE_UNITS; tex_unit++) {
-			if (cmd->textures[tex_unit].index != INVALID_HANDLE
-				&& bound_textures[tex_unit].index != cmd->textures[tex_unit].index)
-			{
-				auto& tex = textures[cmd->textures[tex_unit].index];
-				glActiveTexture(GL_TEXTURE0 + tex_unit);
-				glBindTexture(tex.target, tex.name);
-				bound_textures[tex_unit] = cmd->textures[tex_unit];
-			}
-		}
-
-		//Compute commands handled here
-		if (key.compute) 
-		{
-			auto compute_cmd = reinterpret_cast<ComputeCmd*>(cmd);
-			glDispatchCompute(compute_cmd->x, compute_cmd->y, compute_cmd->z);
-			continue;
-		}
-
-		//Everything else is a draw command
-		auto draw_cmd = reinterpret_cast<DrawCmd*>(cmd);
-
-		//Check view and update it
-
-		//Update rasterization state
-		if (raster_state != draw_cmd->render_state ) //Raster state has changed.
-		{
-			//Depth test
-			if (((raster_state ^ draw_cmd->render_state) & RenderState::DEPTH_TEST_MASK) != 0) 
-			{
-				//NOTE: This list has to match the order in the RenderState enum. I don't love that brittleness.
-				if ((raster_state & RenderState::DEPTH_TEST_MASK) == RenderState::DEPTH_TEST_OFF) {
-					glEnable(GL_DEPTH_TEST);
-				}
-				
-				if ((draw_cmd->render_state & RenderState::DEPTH_TEST_MASK) == RenderState::DEPTH_TEST_OFF) {
-					glDisable(GL_DEPTH_TEST);
-				}
-				else
-				{
-					constexpr GLenum depth_funcs[] = { GL_LESS, GL_LEQUAL, GL_EQUAL, GL_GEQUAL,
-						GL_GREATER, GL_NOTEQUAL, GL_NEVER, GL_ALWAYS };
-					int depth_func_index = (draw_cmd->render_state & RenderState::DEPTH_TEST_MASK) >> RenderState::DEPTH_TEST_SHIFT;
-					if (depth_func_index != 0) {
-						glDepthFunc(depth_funcs[depth_func_index - 1]);
-					}
-				}
-			}
-
-			//Blending function
-			if (((raster_state ^ draw_cmd->render_state) & RenderState::BLEND_MASK) != 0) 
-			{
-				
-				constexpr GLenum blend_funcs[] = { GL_ZERO, GL_ONE, GL_SRC_COLOR, 
-					GL_ONE_MINUS_SRC_COLOR, GL_DST_COLOR, GL_ONE_MINUS_DST_COLOR, 
-					GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_DST_ALPHA, 
-					GL_ONE_MINUS_DST_ALPHA, GL_CONSTANT_COLOR, GL_ONE_MINUS_CONSTANT_COLOR, 
-					GL_CONSTANT_ALPHA, GL_ONE_MINUS_CONSTANT_ALPHA, GL_SRC_ALPHA_SATURATE, 
-					GL_SRC1_COLOR, GL_ONE_MINUS_SRC1_COLOR, GL_SRC1_ALPHA, 
-					GL_ONE_MINUS_SRC1_ALPHA };
-				int blend_func_index = (draw_cmd->render_state & RenderState::BLEND_MASK) >> RenderState::BLEND_SHIFT;
-				if (blend_func_index != 0) {
-					glBlendFunc(GL_SRC_ALPHA, blend_funcs[blend_func_index - 1]);
-				}
-			}
-			
-			//Blending Equation
-			if (((raster_state ^ draw_cmd->render_state) & RenderState::BLEND_EQUATION_MASK) != 0) 
-			{
-				
-				constexpr GLenum blend_eqs[] = { GL_FUNC_ADD, GL_FUNC_SUBTRACT, GL_FUNC_REVERSE_SUBTRACT, GL_MIN, GL_MAX };
-				int blend_eq_index = (draw_cmd->render_state & RenderState::BLEND_EQUATION_MASK) >> RenderState::BLEND_EQUATION_SHIFT;
-				if (blend_eq_index != 0) {
-					glBlendEquation(blend_eqs[blend_eq_index - 1]);
-				}
-			}
-
-			//Culling settings
-			if (((raster_state ^ draw_cmd->render_state) & RenderState::CULL_MASK) != 0) 
-			{
-				//Culling state
-				auto cull_state = draw_cmd->render_state & RenderState::CULL_MASK;
-				if ((raster_state & RenderState::CULL_MASK) == RenderState::CULL_OFF) {
-					glEnable(GL_CULL_FACE);
-				}
-				else if (cull_state == RenderState::CULL_OFF) {
-					glDisable(GL_CULL_FACE);
-				}
-				
-				if (cull_state == RenderState::CULL_CW) {
-					glFrontFace(GL_CW);
-				} 
-				else if (cull_state == RenderState::CULL_CCW) {
-					glFrontFace(GL_CCW);
-				}
-			}
-
-			if (((raster_state ^ draw_cmd->render_state) & RenderState::PRIMITIVE_MASK) != 0) 
-			{
-				constexpr GLenum primitive_types[] = {
-					GL_TRIANGLES,
-					GL_TRIANGLE_STRIP,
-					GL_TRIANGLE_FAN,
-					GL_POINTS,
-					GL_LINE_STRIP,
-					GL_LINE_LOOP,
-					GL_LINES,
-					GL_PATCHES
-				};
-				const int primitive_index = (draw_cmd->render_state & RenderState::PRIMITIVE_MASK) >> RenderState::PRIMITIVE_SHIFT;
-				primitive_type = primitive_types[primitive_index];
-			}
-			raster_state = draw_cmd->render_state;
-		}
-
-		//Update scissoring
-		if (draw_cmd->scissor[2] == UINT32_MAX ){
-			draw_cmd->scissor[2] = framebuffer_size[2];
-		}
-		if (draw_cmd->scissor[3] == UINT32_MAX) {
-			draw_cmd->scissor[3] = framebuffer_size[3];
-		}
-		if(std::memcmp(scissor, draw_cmd->scissor, sizeof(scissor)) != 0)
-		{
-			glScissor(draw_cmd->scissor[0], draw_cmd->scissor[1], draw_cmd->scissor[2], draw_cmd->scissor[3]);
-			std::memcpy(scissor, draw_cmd->scissor, sizeof(scissor));
-		}
-
-		//VAOs - lookup the appropriate one, create it if necessary.
-		{
-			if (index_buffer_handle.index != draw_cmd->index_buffer ||
-				vertex_buffer_handle.index != draw_cmd->vertex_buffer)
-			{
-				vertex_buffer_handle = VertexBufferHandle{ draw_cmd->vertex_buffer };
-				index_buffer_handle = IndexBufferHandle{ draw_cmd->index_buffer };
-				//Compute hash
-				rkg::MurmurHash hash;
-				hash.Add(draw_cmd->vertex_buffer);
-				hash.Add(draw_cmd->index_buffer);
-				auto vao_hash = hash.Finish();
-				
-				//Attempt to lookup vao.
-				static GLCache<MAX_VERTEX_ARRAY_OBJECTS> vao_cache;
-				auto vao = vao_cache.Get(vao_hash);
-				if (vao != vao_cache.INVALID_INDEX) { 
-					glBindVertexArray(vao);
-				}
-				else {
-					//Create a new VAO for this data.
-					glGenVertexArrays(1, &vao);
-					vao_cache.Add(vao_hash, vao);
-					glBindVertexArray(vao);
-					auto& vertex_buffer = vertex_buffers[draw_cmd->vertex_buffer];
-					
-					
-					auto& vertex_layout = vertex_buffer.layout;
-					glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer.buffer);
-
-					if (draw_cmd->index_buffer != INVALID_HANDLE) {
-						auto& index_buffer = index_buffers[draw_cmd->index_buffer];
-						glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, index_buffer.buffer);
-					}
-					auto vertex_size = vertex_layout.SizeOfVertex();
-					for (int i = 0; i < vertex_layout.num_attributes; i++) {
-						auto attrib_loc = glGetAttribLocation(program->id, vertex_layout.names[i]);
-						/*
-						Pack attribute info into 8 bits:
-						76543210
-						xnttttss
-						x - reserved
-						n - normalized
-						t - type
-						s - number
-						*/
-						auto attrib = vertex_layout.attribs[i];
-						bool normalized = (attrib & 0x40) >> 6;
-						GLuint size = (attrib & 0x03) + 1;
-						auto type = (VertexLayout::AttributeType::Enum)((attrib & 0x3C) >> 2);
-						
-						glVertexAttribPointer(attrib_loc, size, GetGLEnum(type), normalized, vertex_size, (void*)vertex_layout.offset[i]);
-						glEnableVertexAttribArray(attrib_loc);
-					}
-				}
-			}
-		}
-
-		//Draw.
-		if (index_buffer_handle.index != INVALID_HANDLE) {
-			auto& ib = index_buffers[index_buffer_handle.index];
-			
-			unsigned int offset = draw_cmd->index_offset;
-			if (draw_cmd->index_offset != 0) {
-				switch (ib.type)
-				{
-				case GL_UNSIGNED_SHORT:
-					offset *= 2;
-					break;
-				case GL_UNSIGNED_INT:
-					offset *= 4;
-					break;
-				default:
-					break;
-				}
-			}
-			auto num_elements = ib.num_elements - offset;
-			if (draw_cmd->index_count != UINT32_MAX) {
-				num_elements = draw_cmd->index_count;
-			}
-
-			glDrawElementsBaseVertex(primitive_type, num_elements, 
-				ib.type, 
-				(GLvoid*)(offset), 
-				draw_cmd->vertex_offset);
-		}
-		else {
-			//NOTE: Take a look, vertex offset might have the same problem as index offset did.
-			auto& vb = vertex_buffers[vertex_buffer_handle.index];
-			auto num_verts = vb.size / vb.layout.SizeOfVertex();
-			if (draw_cmd->vertex_count != UINT32_MAX) {
-				num_verts = draw_cmd->vertex_count;
-			}
-			glDrawArrays(primitive_type, draw_cmd->vertex_offset, num_verts);
-		}
-	}
-	
-	key_index[back_buffer] = 0;
-
-	post_buffer.Execute(FrameData.post_buffer_end);
-
-	FreeMemory();
 }

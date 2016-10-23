@@ -290,7 +290,7 @@ namespace render {
 	//Submit a draw call using the currently bound buffers.
 	void Submit(LayerHandle layer, ProgramHandle program, uint32_t depth = 0, bool preserve_state = false);
 	void EndFrame();//Submit frame to render thread.
-	void Render();//Submit the frame to the renderer.
+	//void Render();//Submit the frame to the renderer.
 
 
 }
