@@ -218,8 +218,7 @@ namespace render {
 #pragma region Memory Management
 	const MemoryBlock*	Alloc(const uint32_t size);
 	const MemoryBlock*	AllocAndCopy(const void * const data, const uint32_t size);
-	//MemoryBlock* CreateReference(const void* const data, const uint32_t size);//Create a reference to existing data. Must be free'd by the application, but not before it is used. 
-
+	const MemoryBlock*	MakeRef(const void* data, const uint32_t size);//Creates a reference to memory which is managed by the user. Must be kept for two frames 
 	const MemoryBlock*	LoadShaderFile(const char * file);
 #pragma endregion
 

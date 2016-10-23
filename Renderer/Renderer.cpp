@@ -594,13 +594,24 @@ inline unsigned int GetWritePosition()
 }
 
 void Execute(unsigned int end)
-{//Assumption: This will only be called by the reader thread.
+{//Assumption: This will only be called by the render thread.
 
 
 	for (unsigned int i = read_index_; i < end; i++, read_index_.fetch_add(1))
 	{
 		read_pos_ = cmd_indices_[i % CAPACITY];
 		Cmd* cmd = reinterpret_cast<Cmd*>(&buffer_[cmd_indices_[i % CAPACITY] % SIZE]);
+		cmd->dispatch(cmd);
+	}
+}
+
+void TryExecuteOne()
+{//Assumption: this is only called by the render thread.
+	auto ri = read_index_.load();
+	if (ri < write_index_)
+	{
+		read_pos_ = cmd_indices_[ri % CAPACITY];
+		Cmd* cmd = reinterpret_cast<Cmd*>(&buffer_[cmd_indices_[ri % CAPACITY] % SIZE]);
 		cmd->dispatch(cmd);
 	}
 }
@@ -1048,7 +1059,7 @@ const MemoryBlock* render::Alloc(const uint32_t size)
 
 	blocks[block_index].data = data;
 	blocks[block_index].size = size;
-	blocks[block_index].frame_to_delete = frame + 2;
+	blocks[block_index].frame_to_delete = frame + 1;
 	return &blocks[block_index];
 }
 
@@ -1057,6 +1068,21 @@ const MemoryBlock* render::AllocAndCopy(const void * const data, const uint32_t 
 	auto block = Alloc(size);
 	memcpy(block->data, data, size);
 	return block;
+}
+
+const MemoryBlock* render::MakeRef(const void* data, const uint32_t size)
+{
+	auto block_index = freelist.Pop();
+	if (block_index > NUM_MEMORY_BLOCKS)
+	{
+		return nullptr;
+	}
+
+	blocks[block_index].data = (uint8_t*) data;
+	blocks[block_index].size = size;
+	blocks[block_index].frame_to_delete = std::numeric_limits<uint64_t>::max(); 
+
+	return &blocks[block_index];
 }
 
 const MemoryBlock* render::LoadShaderFile(const char* file)
@@ -2184,6 +2210,10 @@ namespace
 				Render();
 				glfwSwapBuffers(window);
 				frame_ready = false;
+			}
+			else
+			{
+				pre_buffer.TryExecuteOne();
 			}
 		}
 	}
