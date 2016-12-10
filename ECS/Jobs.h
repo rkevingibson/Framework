@@ -23,7 +23,9 @@ namespace ecs {
 			char user_data[16];
 		};
 	};
-	static_assert(sizeof(Job) <= 64, "Job got too big, something went wrong.");
+
+	constexpr auto JobSize = sizeof(Job);
+	static_assert(sizeof(Job) <= 128, "Job got too big, something went wrong.");
 
 	constexpr size_t MAX_NUM_JOBS = 2048; //Must be a power of two.
 	constexpr size_t MAX_WORKER_THREADS = 16;
