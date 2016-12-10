@@ -573,11 +573,10 @@ struct Cmd
 
 class CommandBuffer {
 private:
-	std::mutex add_mutex_;
-	std::atomic<unsigned int> write_pos_{ 0 };
-	std::atomic<unsigned int> write_index_{ 0 };
-	std::atomic<unsigned int> read_pos_{ 0 };
-	std::atomic<unsigned int> read_index_{ 0 };
+	unsigned int write_pos_{ 0 };
+	unsigned int write_index_{ 0 };
+	unsigned int read_pos_{ 0 };
+	unsigned int read_index_{ 0 };
 
 	constexpr static unsigned int SIZE{ KILO(4) };
 	constexpr static unsigned int CAPACITY{ KILO(1) };
@@ -588,30 +587,15 @@ public:
 
 inline unsigned int GetWritePosition()
 {
-	//NB: Lock guard probably not needed. 
-	std::lock_guard<std::mutex> lock(add_mutex_);
 	return write_index_;
 }
 
 void Execute(unsigned int end)
-{//Assumption: This will only be called by the render thread.
-
-
-	for (unsigned int i = read_index_; i < end; i++, read_index_.fetch_add(1))
+{
+	for (unsigned int i = read_index_; i < end; i++, read_index_++)
 	{
 		read_pos_ = cmd_indices_[i % CAPACITY];
 		Cmd* cmd = reinterpret_cast<Cmd*>(&buffer_[cmd_indices_[i % CAPACITY] % SIZE]);
-		cmd->dispatch(cmd);
-	}
-}
-
-void TryExecuteOne()
-{//Assumption: this is only called by the render thread.
-	auto ri = read_index_.load();
-	if (ri < write_index_)
-	{
-		read_pos_ = cmd_indices_[ri % CAPACITY];
-		Cmd* cmd = reinterpret_cast<Cmd*>(&buffer_[cmd_indices_[ri % CAPACITY] % SIZE]);
 		cmd->dispatch(cmd);
 	}
 }
@@ -622,7 +606,6 @@ inline bool Push(const T& t)
 	static_assert(std::is_base_of<Cmd, T>::value, "Adding invalid command");
 	//We're strictly single-reader/singe-consumer right now.
 	//This lock makes us safe to have multiple-readers/single-consumer.
-	std::lock_guard<std::mutex> lock(add_mutex_);
 	unsigned int wpos = write_pos_;
 	unsigned int windex = write_index_;
 
@@ -649,8 +632,8 @@ inline bool Push(const T& t)
 	cmd_indices_[windex % CAPACITY] = wpos;
 
 	//Finally, increment the buffer pointer, indicating that an item has been added.
-	write_pos_.exchange(wpos + sizeof(T));
-	write_index_.exchange(windex + 1);
+	write_pos_ = wpos + sizeof(T);
+	write_index_ windex + 1;
 	return true;
 }
 };

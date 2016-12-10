@@ -3,7 +3,7 @@
 /*
 	An opengl render backend, allowing multithreaded draw call submission, based on draw buckets. 
 	Right now, requires an opengl context to be created externally and current on the thread which calls Initialize and Render.
-	All other calls can be made from any thread, and are thread-safe. 
+	All other calls can only be made from the same thread. 
 
 	Ideally, this would be relatively easy to port to different backends, 
 	but for now, I'm only concerned with opengl.
@@ -229,9 +229,9 @@ namespace render {
 	
 	LayerHandle	CreateLayer();
 	ProgramHandle	CreateProgram(const MemoryBlock* vertex_shader, const MemoryBlock* frag_shader);
-	unsigned int GetNumUniforms(ProgramHandle h); //NOTE: This function must be called a frame after the program was created.
-	int GetProgramUniforms(ProgramHandle h, UniformHandle* buffer, int size);
-	void GetUniformInfo(UniformHandle h, char* name, int name_size, UniformType* type);
+	unsigned int	GetNumUniforms(ProgramHandle h); //NOTE: This function must be called a frame after the program was created.
+	int	GetProgramUniforms(ProgramHandle h, UniformHandle* buffer, int size);
+	void	GetUniformInfo(UniformHandle h, char* name, int name_size, UniformType* type);
 #pragma endregion
 
 #pragma region Vertex Buffer Functions
