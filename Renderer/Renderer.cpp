@@ -633,7 +633,7 @@ inline bool Push(const T& t)
 
 	//Finally, increment the buffer pointer, indicating that an item has been added.
 	write_pos_ = wpos + sizeof(T);
-	write_index_ windex + 1;
+	write_index_ = windex + 1;
 	return true;
 }
 };
@@ -1884,6 +1884,8 @@ namespace
 		unsigned int post_buffer_end;
 	} FrameData;
 
+	GLFWwindow* current_window = nullptr;
+
 	void Render()
 	{
 		//Do any pre-render stuff wrt resources that need management.
@@ -2162,44 +2164,6 @@ namespace
 
 		FreeMemory();
 	}
-
-
-	void RenderLoop(GLFWwindow* window)
-	{
-
-		glfwMakeContextCurrent(window);
-		LoadGLFunctions();
-
-#ifdef RENDER_DEBUG
-		glDebugMessageCallback(GLErrorCallback, nullptr);
-		glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
-#endif
-
-		glEnable(GL_DEPTH_TEST);
-		//glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-		glEnable(GL_SCISSOR_TEST);
-		glEnable(GL_BLEND);
-		glBlendEquation(GL_FUNC_ADD);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		glEnable(GL_CULL_FACE);
-		glCullFace(GL_BACK);
-
-		CreateLayer();
-		render_thread_active = true;
-		while (render_thread_active)
-		{
-			if (frame_ready)
-			{
-				Render();
-				glfwSwapBuffers(window);
-				frame_ready = false;
-			}
-			else
-			{
-				pre_buffer.TryExecuteOne();
-			}
-		}
-	}
 }
 
 void render::Initialize(GLFWwindow* window)
@@ -2207,18 +2171,29 @@ void render::Initialize(GLFWwindow* window)
 	glfwMakeContextCurrent(nullptr);
 	
 	InitializeMemory();
-	
-	std::thread render_thread(RenderLoop, window);
-	render_thread.detach();
+	glfwMakeContextCurrent(window);
+	current_window = window;
+	LoadGLFunctions();
+
+#ifdef RENDER_DEBUG
+	glDebugMessageCallback(GLErrorCallback, nullptr);
+	glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+#endif
+
+	glEnable(GL_DEPTH_TEST);
+	//glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+	glEnable(GL_SCISSOR_TEST);
+	glEnable(GL_BLEND);
+	glBlendEquation(GL_FUNC_ADD);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glEnable(GL_CULL_FACE);
+	glCullFace(GL_BACK);
+	CreateLayer();
 	return;
 }
 
 void render::EndFrame()
 {
-	while (frame_ready)//Renderer is already working. Later, replace this with a multi-frame queue, where we can drop frames if they take too long.
-	{
-		std::this_thread::yield();
-	}
 	//This is basically a sync point. So at this point, the render thread should be doing nothing.
 	FrameData.pre_buffer_end = pre_buffer.GetWritePosition();
 	FrameData.post_buffer_end = post_buffer.GetWritePosition();
@@ -2226,4 +2201,7 @@ void render::EndFrame()
 	back_buffer = front_buffer.fetch_xor(1);
 	frame++;
 	frame_ready = true;
+
+	Render();
+	glfwSwapBuffers(current_window);
 }
