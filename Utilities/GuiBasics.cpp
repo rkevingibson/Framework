@@ -106,12 +106,12 @@ namespace {
 		}
 	}
 
-	const char* GetClipboardText()
+	const char* GetClipboardText(void* user_data)
 	{
 		return glfwGetClipboardString(gui.window);
 	}
 
-	void SetClipboardText(const char* text)
+	void SetClipboardText(void* user_data, const char* text)
 	{
 		glfwSetClipboardString(gui.window, text);
 	}
