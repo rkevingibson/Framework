@@ -28,6 +28,7 @@ namespace rkg
 			}
 		} while (FindNextFile(handle, &file));
 
+		FindClose(handle);
 		return result;
 #else
 #error "Filesystem not supported on this platform. Working on it."
