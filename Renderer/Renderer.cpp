@@ -950,58 +950,35 @@ namespace {
 	
 	class FreeList
 	{
+		//Should probably just turn this into a freelist allocator, this is way too simple a class on its own.
 	public:
 		inline void Push(uint32_t x)
 		{
-			//This function is only ever called from the render thread.
-			//Also, this queue will never overflow, so that's nice.
-			auto wp = write_pos_.fetch_add(1);
-			data_[wp % NUM_MEMORY_BLOCKS] = x;
+			//This queue will never overflow so that's nice. Just because of the way it's used.
+			data_[write_pos_ % NUM_MEMORY_BLOCKS] = x;
 		}
 
 		inline uint32_t Pop()
 		{
-			//This function is called by a bunch of threads, so must be thread safe.
-			//I want to atomically read the read_pos, compare with wp, and if not equal, increment it. So it's a compare and swap thing
-			//But with them not being equal, which is a pain.
-			//Could I re-organize this? Do a fetch-add, which increments it for us. 
-			//If the queue was full, then we decrement it and we move along.
-			//If it's not full, we can do the read and return. That's fine.
-			//What if two are reading at the same time?
-			//WP could be different for each, and rp will be at most 1 apart. 
-			//BUT if wp changes, then the first could fail while the second succeeds.
-			//This could mean that we return something from the queue that becomes past read_pos, which is bad.
-			//So i need to test and add at the same time, adding only conditionally.
-			//That way, consecutive values of rp are guaranteed to be valid i think?
-			//So I test against wp. If it succeeds, then I'm full, and that's not ideal.
-			//If I fail, then they're not equal and I should increment.
-			//Screw it, I'll use a mutex for now.
-
-			std::lock_guard<std::mutex> lock(read_mutex_);
-			auto wp = write_pos_.load();
-			auto rp = read_pos_.load();
-			if (rp == wp ) //Queue is empty
+			if (read_pos_ == write_pos_ ) //Queue is empty
 			{
 				return NUM_MEMORY_BLOCKS + 1;
 			}
 			else //Queue had room when I entered the function.
 			{
+				auto result = data_[read_pos_ % NUM_MEMORY_BLOCKS];
 				read_pos_++;
-				return data_[rp % NUM_MEMORY_BLOCKS];
+				return result;
 			}
 		}
 
 	private:
 		std::array<uint32_t, NUM_MEMORY_BLOCKS> data_;
-		std::atomic<uint32_t> write_pos_{ 0 };
-		std::atomic<uint32_t> read_pos_{ 0 };
-		std::mutex read_mutex_;
+		uint32_t write_pos_{ 0 };
+		uint32_t read_pos_{ 0 };
 
 	} freelist;
 	
-
-	//std::atomic<uint32_t> num_blocks{ 0 };
-
 	void InitializeMemory()
 	{
 		for (int i = 0; i < NUM_MEMORY_BLOCKS; i++)
