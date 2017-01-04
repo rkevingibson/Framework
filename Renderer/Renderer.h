@@ -27,7 +27,6 @@ namespace render
 
 RENDER_HANDLE(VertexBufferHandle);
 RENDER_HANDLE(IndexBufferHandle);
-RENDER_HANDLE(LayerHandle);
 RENDER_HANDLE(ProgramHandle);
 RENDER_HANDLE(UniformHandle);
 RENDER_HANDLE(DynamicVertexBufferHandle);
@@ -229,10 +228,9 @@ const MemoryBlock*	LoadShaderFile(const char * file);
 
 #pragma region Layer Functions
 	//Create a new layer to render on - draws will be sorted by their layer.
-static constexpr LayerHandle DEFAULT_LAYER{ 0 };
+static constexpr uint8_t DEFAULT_LAYER{ 0 };
 
 
-LayerHandle	CreateLayer();
 ProgramHandle	CreateProgram(const MemoryBlock* vertex_shader, const MemoryBlock* frag_shader);
 unsigned int	GetNumUniforms(ProgramHandle h); //NOTE: This function must be called a frame after the program was created.
 int	GetProgramUniforms(ProgramHandle h, UniformHandle* buffer, int size);
@@ -268,7 +266,6 @@ void SetUniform(UniformHandle handle, const void* data, int num = 1);
 
 //Because handles are all unique types, we can have nice overloading to keep things simple.
 //TODO: Right now these don't do anything.
-void	Destroy(LayerHandle);
 void	Destroy(ProgramHandle);
 void	Destroy(VertexBufferHandle);
 void	Destroy(DynamicVertexBufferHandle);
@@ -292,7 +289,9 @@ void SetScissor(uint32_t x, uint32_t y, uint32_t w, uint32_t h);
 
 
 //Submit a draw call using the currently bound buffers.
-void Submit(LayerHandle layer, ProgramHandle program, uint32_t depth = 0, bool preserve_state = false);
+void Submit(uint8_t layer, ProgramHandle program, uint32_t depth = 0, bool preserve_state = false);
+void SubmitCompute(uint8_t layer, ProgramHandle program, uint16_t num_x = 1, uint16_t num_y = 1, uint16_t num_z = 1);
+
 void EndFrame();//Submit frame to render thread.
 //void Render();//Submit the frame to the renderer.
 

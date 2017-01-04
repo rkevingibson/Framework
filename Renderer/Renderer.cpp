@@ -410,7 +410,7 @@ struct Key
 	765543210.76543210.76543210.76543210  76543210.76543210.76543210.76543210
 	bbbbbbbbb csssssss sssspppp pppppppp  ddddddddddddddddddddddddddddddddddd
 
-	b - bucket - corresponds to the view/renderbuffer.
+	b - layer - corresponds to the view/renderbuffer.
 	c - compute - set if the key is a compute shader key. Reserved right now.
 	s - sequence - order of draw in the frame. 0 by default, right now no support for sequenced rendering.
 	p - program - the render program
@@ -420,7 +420,7 @@ struct Key
 	uint64_t Encode()
 	{
 		uint64_t result = 0 |
-			((uint64_t) bucket << 56) |
+			((uint64_t) layer << 56) |
 			(((uint64_t) sequence & 0x7FF) << 44) |
 			(((uint64_t) program & 0xFFF) << 32) |
 			depth;
@@ -429,14 +429,14 @@ struct Key
 	static Key Decode(uint64_t k)
 	{
 		Key result;
-		result.bucket = (k >> 0x38);
+		result.layer = (k >> 0x38);
 		result.compute = (k >> 0x37) & 0x1;
 		result.sequence = (k >> 0x2C) & 0x7FF;
 		result.program = (k >> 0x20) & 0xFFF;
 		result.depth = k & 0xFFFFFFFF;
 		return result;
 	}
-	uint8_t	bucket : 8;
+	uint8_t	layer : 8;
 	bool compute : 1;
 	uint16_t	sequence : 11;
 	uint16_t	program : 12;
@@ -551,8 +551,12 @@ struct EncodedKey
 
 std::array<EncodedKey, MAX_DRAWS_PER_FRAME>	keys;
 DrawCmd current_draw;
+ComputeCmd current_compute;
+
 int render_buffer_count{ 0 };
-std::array<DrawCmd, MAX_DRAWS_PER_THREAD> render_buffer;
+std::array<DrawCmd, MAX_DRAWS_PER_FRAME> render_buffer;
+int compute_buffer_count{ 0 };
+std::array<ComputeCmd, MAX_DRAWS_PER_FRAME> compute_buffer;
 
 #pragma endregion
 
@@ -804,10 +808,7 @@ using RenderAllocator = rkg::Mallocator;
 
 RenderAllocator renderer_allocator;
 
-void InitializeMemory()
-{
 
-}
 
 bool IsMemoryRef(const MemoryBlock* b)
 {
@@ -1059,14 +1060,6 @@ void render::Resize(int w, int h)
 
 #pragma endregion
 /*==================== RESOURCE MANAGEMENT ====================*/
-
-LayerHandle render::CreateLayer()
-{
-	auto layer = layers.Create();
-	LayerHandle result{ layer.index };
-	*layer.obj = RenderLayer{};
-	return result;
-}
 
 
 namespace
@@ -1720,10 +1713,6 @@ void render::SetUniform(UniformHandle handle, const void* data, int num)
 
 #pragma region Destroy Functions
 
-void render::Destroy(LayerHandle)
-{
-}
-
 namespace
 {
 void DeleteProgram(Cmd*);
@@ -1829,25 +1818,17 @@ void render::SetScissor(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
 	current_draw.scissor[3] = h;
 }
 
-void render::Submit(LayerHandle layer, ProgramHandle program, uint32_t depth, bool preserve_state)
+void render::Submit(uint8_t layer, ProgramHandle program, uint32_t depth, bool preserve_state)
 {
-	//TODO: Do we want these heavy locks? Or just require render gets called at sync point?
 	//Create a sort key for this draw call
 	Key key;
-	key.bucket = layer.index;
+	key.layer = layer;
 	key.compute = false;
 	key.program = program.index;
 	key.depth = depth;
 
-	//TODO: Key Sequential ordering.
-	static thread_local uint64_t previous_frame = 0;
-	if (previous_frame != frame) //First draw this frame.
-	{
-		current_draw.uniform_start = 0;
-	}
-
 	unsigned int index = key_index++;
-	key.sequence = 0;//TODO: Something about sequential rendering needs to go here.
+	key.sequence = index;//TODO: Something about sequential rendering needs to go here.
 	auto encoded_key = key.Encode();
 
 	current_draw.program = program;
@@ -1863,11 +1844,40 @@ void render::Submit(LayerHandle layer, ProgramHandle program, uint32_t depth, bo
 	keys[index] = { encoded_key,  &(*buffer)[draw_index] };
 
 	if (!preserve_state) {
-		//Note: Could replace this with a default constructor for DrawCmd.
 		current_draw = DrawCmd{};
 	}
 	current_draw.uniform_start = uniform_end;
-	previous_frame = frame;
+	current_compute.uniform_start = uniform_end;
+}
+
+void render::SubmitCompute(uint8_t layer, ProgramHandle program, uint16_t num_x, uint16_t num_y, uint16_t num_z)
+{
+	Key key;
+	key.layer = layer;
+	key.compute = true;
+	key.program = program.index;
+	key.depth = 0; //Could probably find something else to do with these bits. Have 32 bits to use to encode... something?
+
+	//This isn't right - need to figure out another way. Just reset uniform start on render.
+	
+	unsigned int index = key_index++;
+	key.sequence = 0;//TODO: Something about sequential rendering needs to go here.
+	auto encoded_key = key.Encode();
+
+	current_compute.program = program;
+	//Handle Uniforms
+	auto uniform_end = uniform_buffer.GetWritePosition();
+	current_compute.uniform_end = uniform_end;
+
+	auto compute_index = compute_buffer_count++;
+	compute_buffer[compute_index] = current_compute;
+	keys[index] = { encoded_key, &compute_buffer[compute_index] };
+
+
+	current_compute = ComputeCmd{};
+	current_compute.uniform_start = uniform_end;
+	current_draw.uniform_start = uniform_end; //Note: Do I want this? Means I cant switch between setting uniforms for compute and draw. Should be fine.
+
 }
 
 namespace
@@ -2141,6 +2151,7 @@ void Render()
 
 	key_index = 0;
 	render_buffer_count = 0;
+	compute_buffer_count = 0;
 	post_buffer.Execute(FrameData.post_buffer_end);
 
 	FreeMemory();
@@ -2151,7 +2162,6 @@ void render::Initialize(GLFWwindow* window)
 {
 	glfwMakeContextCurrent(nullptr);
 
-	InitializeMemory();
 	glfwMakeContextCurrent(window);
 	current_window = window;
 	LoadGLFunctions();
@@ -2169,7 +2179,6 @@ void render::Initialize(GLFWwindow* window)
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glEnable(GL_CULL_FACE);
 	glCullFace(GL_BACK);
-	CreateLayer();
 	return;
 }
 
@@ -2180,6 +2189,8 @@ void render::EndFrame()
 	frame++;
 	
 	Render();
+	current_draw.uniform_start = 0;
+	current_compute.uniform_start = 0;
 
 	glfwSwapBuffers(current_window);
 }

@@ -16,7 +16,7 @@ namespace {
 	struct {
 		GLFWwindow* window;
 		double time;		
-		render::LayerHandle layer;
+		uint8_t layer;
 		render::UniformHandle projection_matrix;
 		render::UniformHandle font_sampler;
 		render::ProgramHandle program;
@@ -207,7 +207,7 @@ void rkg::InitializeImgui(GLFWwindow* window)
 	gui.vertex_buffer = render::CreateDynamicVertexBuffer(vert_layout);
 	gui.index_buffer = render::CreateDynamicIndexBuffer(render::IndexType::UShort);
 
-	gui.layer = render::CreateLayer();
+	gui.layer = 1;
 }
 
 void rkg::ImguiNewFrame()
