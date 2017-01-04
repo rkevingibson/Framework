@@ -232,6 +232,8 @@ static constexpr uint8_t DEFAULT_LAYER{ 0 };
 
 
 ProgramHandle	CreateProgram(const MemoryBlock* vertex_shader, const MemoryBlock* frag_shader);
+ProgramHandle	CreateComputeProgram(const MemoryBlock* compute_shader);
+
 unsigned int	GetNumUniforms(ProgramHandle h); //NOTE: This function must be called a frame after the program was created.
 int	GetProgramUniforms(ProgramHandle h, UniformHandle* buffer, int size);
 void	GetUniformInfo(UniformHandle h, char* name, int name_size, UniformType* type);

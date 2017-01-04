@@ -50,6 +50,8 @@ typedef void (GLAPI DEBUGPROC)(GLenum source, GLenum type, GLuint id, GLenum sev
 #define GL_UNSIGNED_INT_2_10_10_10_REV    0x8368
 #define GL_VERTEX_SHADER                  0x8B31
 #define GL_FRAGMENT_SHADER                0x8B30
+#define GL_COMPUTE_SHADER                 0x91B9
+#define GL_GEOMETRY_SHADER                0x8DD9
 #define GL_ACTIVE_UNIFORMS                0x8B86
 #define GL_ACTIVE_UNIFORM_MAX_LENGTH      0x8B87
 #define GL_ARRAY_BUFFER                   0x8892
@@ -1099,41 +1101,89 @@ struct CreateProgramCmd : Cmd
 	uint32_t index;
 	const MemoryBlock* vert_shader;
 	const MemoryBlock* frag_shader;
+	const MemoryBlock* compute_shader;
+	const MemoryBlock* geom_shader;
 };
 void CreateProgram(Cmd* cmd)
 {
 	auto data = reinterpret_cast<CreateProgramCmd*>(cmd);
-	auto vert = glCreateShader(GL_VERTEX_SHADER);
-	glShaderSource(vert, 1, (const GLchar**) &data->vert_shader->ptr, nullptr);
-	glCompileShader(vert);
 
-	auto frag = glCreateShader(GL_FRAGMENT_SHADER);
-	glShaderSource(frag, 1, (const GLchar**) &data->frag_shader->ptr, nullptr);
-	glCompileShader(frag);
+	GLuint program;
 
-	if (error_callback != nullptr) {
-		GLint status;
-		glGetShaderiv(vert, GL_COMPILE_STATUS, &status);
-		if (status != GL_TRUE) {
-			char buffer[512];
-			glGetShaderInfoLog(vert, 512, NULL, buffer);
-			printf(buffer);
-			error_callback(buffer);
-		}
+	if (data->compute_shader) {
+		auto compute = glCreateShader(GL_COMPUTE_SHADER);
+		glShaderSource(compute, 1, (const GLchar**)&data->compute_shader->ptr, nullptr);
+		glCompileShader(compute);
 
-		glGetShaderiv(frag, GL_COMPILE_STATUS, &status);
-		if (status != GL_TRUE) {
-			char buffer[512];
-			glGetShaderInfoLog(frag, 512, NULL, buffer);
-			error_callback(buffer);
+		if (error_callback != nullptr) {
+			GLint status;
+
+			glGetShaderiv(compute, GL_COMPILE_STATUS, &status);
+			if (status != GL_TRUE) {
+				char buffer[512];
+				glGetShaderInfoLog(compute, 512, NULL, buffer);
+				error_callback(buffer);
+			}
 		}
 	}
-	auto program = glCreateProgram();
-	glAttachShader(program, vert);
-	glAttachShader(program, frag);
-	glLinkProgram(program);
-	glDeleteShader(vert);
-	glDeleteShader(frag);
+	else {
+		program = glCreateProgram();
+
+		auto vert = glCreateShader(GL_VERTEX_SHADER);
+		glShaderSource(vert, 1, (const GLchar**)&data->vert_shader->ptr, nullptr);
+		glCompileShader(vert);
+		glAttachShader(program, vert);
+
+		auto frag = glCreateShader(GL_FRAGMENT_SHADER);
+		glShaderSource(frag, 1, (const GLchar**)&data->frag_shader->ptr, nullptr);
+		glCompileShader(frag);
+		glAttachShader(program, frag);
+
+		GLuint geom;
+		if (data->geom_shader) {
+			geom = glCreateShader(GL_GEOMETRY_SHADER);
+			glShaderSource(geom, 1, (const GLchar**)&data->geom_shader->ptr, nullptr);
+			glCompileShader(geom);
+			glAttachShader(program, geom);
+		}
+
+		if (error_callback != nullptr) {
+			GLint status;
+			glGetShaderiv(vert, GL_COMPILE_STATUS, &status);
+			if (status != GL_TRUE) {
+				char buffer[512];
+				glGetShaderInfoLog(vert, 512, NULL, buffer);
+				error_callback(buffer);
+			}
+
+			glGetShaderiv(frag, GL_COMPILE_STATUS, &status);
+			if (status != GL_TRUE) {
+				char buffer[512];
+				glGetShaderInfoLog(frag, 512, NULL, buffer);
+				error_callback(buffer);
+			}
+
+			if (data->geom_shader) {
+				glGetShaderiv(geom, GL_COMPILE_STATUS, &status);
+				if (status != GL_TRUE) {
+					char buffer[512];
+					glGetShaderInfoLog(geom, 512, NULL, buffer);
+					error_callback(buffer);
+				}
+			}
+		}
+
+		
+		glLinkProgram(program);
+		glDeleteShader(vert);
+		glDeleteShader(frag);
+
+		if (data->geom_shader) {
+			glDeleteShader(geom);
+		}
+	}
+	
+
 
 	//Get uniform information.
 	{
@@ -1193,6 +1243,20 @@ ProgramHandle render::CreateProgram(const MemoryBlock* vertex_shader, const Memo
 
 
 	return result;
+}
+
+ProgramHandle render::CreateComputeProgram(const MemoryBlock * compute_shader)
+{
+	auto program = programs.Create();
+	ProgramHandle result{ program.index };
+	CreateProgramCmd cmd;
+	
+	cmd.compute_shader = compute_shader;
+	cmd.index = program.index;
+	pre_buffer.Push(cmd);
+
+	return result;
+	return ProgramHandle();
 }
 
 unsigned int render::GetNumUniforms(ProgramHandle h)
