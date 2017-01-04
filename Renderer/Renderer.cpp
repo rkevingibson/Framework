@@ -307,47 +307,21 @@ private:
 	std::array<rkg::byte, Size> buffer_;
 };
 
-template<uint32_t Size>
-class RingBuffer
-{
-	/*Simple MPMC thread-safe ring buffer to store a free-list.
-	Uses mutexes. Since this is used only when a GL resource is created/destroyed,
-	it doesn't need to be super high-performance. Can always benchmark later.
-	*/
-private:
-	std::mutex mutex;
-	unsigned int read{ 0 };
-	unsigned int write{ 0 };
-	uint16_t buffer[Size];
-public:
-	bool Push(uint16_t val)
-	{
-		std::lock_guard<std::mutex> lock(mutex);
-		if (write == read + Size) {
-			return false;
-		}
-		buffer[write % Size] = val;
-		write++;
-		return true;
-	}
-
-	bool Pop(uint16_t* val)
-	{
-		std::lock_guard<std::mutex> lock(mutex);
-		if (read == write) {
-			*val = 0;
-			return false;
-		}
-		*val = buffer[read % Size];
-		read++;
-		return true;
-	}
-
-};
 
 template<typename T, uint32_t Size>
 class ResourceList
 {
+private:
+	T data_[Size];
+
+	//We'll use an intrusive freelist to keep track of free spots.
+	struct Node
+	{
+		Node* next{ nullptr };
+	};
+	Node* head_{ nullptr };
+	static_assert(sizeof(Node) <= sizeof(T), "Invalid ResourceList created: Need larger type to allow for freelist.");
+
 public:
 	struct ResultPair
 	{
@@ -357,25 +331,28 @@ public:
 
 	ResourceList()
 	{
-		for (uint16_t i = 0; i < Size; i++) {
-			bool success = free_list.Push(i);
-			ASSERT(success && "Something wrong in the ring buffer code!");
-		}
+		//To initialize, thread a freelist through the whole thing.
+		Clear();
 	}
 
 	ResultPair Create()
 	{
+		Expects(head_);
 		uint16_t index;
-		auto success = free_list.Pop(&index);
-		ASSERT(success);
-		return ResultPair{ index, &data_[index] };
+		auto result = reinterpret_cast<T*>(head_);
+		index = result - data_;
+		head_ = head_->next;
+		memset(result, 0, sizeof(T));
+
+		return ResultPair{ index, result };
 	}
 
 	void Remove(uint16_t index)
 	{
-		//NOTE: Pretty sure this isn't thread-safe. Could memset after the free_list thing, in theory.
 		memset(&data_[index], 0, sizeof(T));
-		free_list.Push(index);
+		auto node = reinterpret_cast<Node*>(&data_[index]);
+		node->next = head_;
+		head_ = node;
 	}
 
 	inline T& operator[](uint32_t index)
@@ -385,13 +362,14 @@ public:
 
 	void Clear()
 	{
-		pos_ = 0;
 		memset(data_, 0, sizeof(T)*Size);
+		for (uint16_t i = 0; i < Size - 1; i++) {
+			auto node = reinterpret_cast<Node*>(&data_[i]);
+			node->next = reinterpret_cast<Node*>(&data_[i + 1]);
+		}
+		reinterpret_cast<Node*>(&data_[Size - 1])->next = nullptr;
+		head_ = reinterpret_cast<Node*>(&data_[0]);
 	}
-
-private:
-	T data_[Size];
-	RingBuffer<Size> free_list;
 };
 #pragma endregion
 
@@ -577,12 +555,12 @@ void SortKeys()
 
 //These buffers manage resources which live across many frames.
 //Stack really isn't appropriate for these... Really want an allocator or something.
-ResourceList<RenderLayer, MAX_RENDER_LAYERS>	layers;
-ResourceList<VertexBuffer, MAX_VERTEX_BUFFERS>	vertex_buffers;
-ResourceList<IndexBuffer, MAX_INDEX_BUFFERS>	index_buffers;
-ResourceList<Texture, MAX_TEXTURES>	textures;
-ResourceList<Uniform, MAX_UNIFORMS> uniforms;
-ResourceList<Program, MAX_SHADER_PROGRAMS>	programs;
+ResourceList<RenderLayer, MAX_RENDER_LAYERS>     layers;
+ResourceList<VertexBuffer, MAX_VERTEX_BUFFERS>   vertex_buffers;
+ResourceList<IndexBuffer, MAX_INDEX_BUFFERS>     index_buffers;
+ResourceList<Texture, MAX_TEXTURES>              textures;
+ResourceList<Uniform, MAX_UNIFORMS>              uniforms;
+ResourceList<Program, MAX_SHADER_PROGRAMS>       programs;
 
 /*==================== Pre/post-rendering Command Buffer ====================*/
 
@@ -828,7 +806,7 @@ void DeallocateBlock(const MemoryBlock* b)
 		renderer_allocator.Deallocate(block);
 	} else {
 		MemoryBlock block;
-		block.ptr = (void*)b;
+		block.ptr = (void*) b;
 		block.length = sizeof(MemoryBlock) + b->length;
 		renderer_allocator.Deallocate(block);
 	}
@@ -1859,7 +1837,7 @@ void render::SubmitCompute(uint8_t layer, ProgramHandle program, uint16_t num_x,
 	key.depth = 0; //Could probably find something else to do with these bits. Have 32 bits to use to encode... something?
 
 	//This isn't right - need to figure out another way. Just reset uniform start on render.
-	
+
 	unsigned int index = key_index++;
 	key.sequence = 0;//TODO: Something about sequential rendering needs to go here.
 	auto encoded_key = key.Encode();
@@ -1873,11 +1851,9 @@ void render::SubmitCompute(uint8_t layer, ProgramHandle program, uint16_t num_x,
 	compute_buffer[compute_index] = current_compute;
 	keys[index] = { encoded_key, &compute_buffer[compute_index] };
 
-
 	current_compute = ComputeCmd{};
 	current_compute.uniform_start = uniform_end;
 	current_draw.uniform_start = uniform_end; //Note: Do I want this? Means I cant switch between setting uniforms for compute and draw. Should be fine.
-
 }
 
 namespace
@@ -2187,7 +2163,7 @@ void render::EndFrame()
 	FrameData.pre_buffer_end = pre_buffer.GetWritePosition();
 	FrameData.post_buffer_end = post_buffer.GetWritePosition();
 	frame++;
-	
+
 	Render();
 	current_draw.uniform_start = 0;
 	current_compute.uniform_start = 0;
