@@ -141,6 +141,7 @@ typedef void (GLAPI DEBUGPROC)(GLenum source, GLenum type, GLuint id, GLenum sev
 	GLX(void, BufferSubData, GLenum target, GLintptr offset, GLsizeiptr size, const GLvoid * data) \
 	GLX(void, BindVertexArray, GLuint vao) \
 	GLX(void, GenVertexArrays, GLuint n, GLuint* vaos) \
+	GLX(void, DeleteBuffers, GLuint n, GLuint* buffers) \
 	/*Misc functions*/ \
 	GLX(void, BlendEquation, GLenum eq) \
 	GLX(void, ActiveTexture, GLenum texture) \
@@ -1720,25 +1721,58 @@ void render::Destroy(ProgramHandle h)
 	programs.Remove(h.index);
 }
 
-void render::Destroy(VertexBufferHandle)
+namespace
 {
+void DeleteBuffer(Cmd*);
+struct DeleteBufferCmd : Cmd
+{
+	static constexpr DispatchFn DISPATCH = { DeleteBuffer };
+	GLuint name;
+};
+
+void DeleteBuffer(Cmd* cmd)
+{
+	auto data = reinterpret_cast<DeleteBufferCmd*>(cmd);
+	glDeleteBuffers(1, &data->name);
+}
 
 }
 
-void	render::Destroy(DynamicVertexBufferHandle)
+void render::Destroy(VertexBufferHandle h)
 {
+	DeleteBufferCmd cmd;
+	cmd.name = vertex_buffers[h.index].buffer;
+	post_buffer.Push(cmd);
+	vertex_buffers.Remove(h.index);
 }
 
-void	render::Destroy(IndexBufferHandle)
+void	render::Destroy(DynamicVertexBufferHandle h)
 {
+	DeleteBufferCmd cmd;
+	cmd.name = vertex_buffers[h.index].buffer;
+	post_buffer.Push(cmd);
+	vertex_buffers.Remove(h.index);
 }
 
-void	render::Destroy(DynamicIndexBufferHandle)
+void	render::Destroy(IndexBufferHandle h)
 {
+	DeleteBufferCmd cmd;
+	cmd.name = index_buffers[h.index].buffer;
+	post_buffer.Push(cmd);
+	index_buffers.Remove(h.index);
 }
 
-void	render::Destroy(TextureHandle)
+void	render::Destroy(DynamicIndexBufferHandle h)
 {
+	DeleteBufferCmd cmd;
+	cmd.name = index_buffers[h.index].buffer;
+	post_buffer.Push(cmd);
+	index_buffers.Remove(h.index);
+}
+
+void	render::Destroy(TextureHandle h)
+{
+
 }
 
 void render::Destroy(UniformHandle h)
