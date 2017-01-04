@@ -494,7 +494,6 @@ struct RenderCmd
 {
 	ProgramHandle program{ INVALID_HANDLE };
 	//Uniform updates.
-	UniformBuffer* uniform_buffer;
 	uint32_t uniform_start;
 	uint32_t uniform_end;
 
@@ -550,22 +549,21 @@ struct EncodedKey
 
 #pragma region Per-Frame Data
 
-std::array<EncodedKey, MAX_DRAWS_PER_FRAME>	keys[2];
-thread_local DrawCmd current_draw;
-thread_local int render_buffer_count[2]{ 0,0 };
-thread_local std::array<DrawCmd, MAX_DRAWS_PER_THREAD> render_buffer[2];
+std::array<EncodedKey, MAX_DRAWS_PER_FRAME>	keys;
+DrawCmd current_draw;
+int render_buffer_count{ 0 };
+std::array<DrawCmd, MAX_DRAWS_PER_THREAD> render_buffer;
 
 #pragma endregion
 
-std::atomic<unsigned int> key_index[2]{ 0,0 };
-std::atomic<unsigned int> front_buffer{ 0 };//Which of the current buffers are you submitting to this frame.
+unsigned int key_index{ 0 };
 
-void SortKeys(unsigned int buffer)
+void SortKeys()
 {
 	//NB: This function only gets called from the render function, so front_buffer is guaranteed not to switch during execution, 
 	//And the arrays won't be written to at all.
-	auto key_list = &keys[buffer];
-	unsigned int num_keys = key_index[buffer];
+	auto key_list = &keys;
+	unsigned int num_keys = key_index;
 	//How to do this? Need to sort in place.
 	//Could use std::sort, but I would need to move the key/draw stuff into a single list.
 	//Why are they in separate lists? Because once theyre sorted 
@@ -788,7 +786,7 @@ private:
 	RawBuffer<MEGA(2)> buffer_;
 };
 
-thread_local UniformBuffer uniform_buffer[2];
+UniformBuffer uniform_buffer;
 } //End anonymous namespace.
 
 #pragma region Memory Management
@@ -1715,7 +1713,7 @@ UniformHandle render::CreateUniform(const char * name, UniformType type)
 void render::SetUniform(UniformHandle handle, const void* data, int num)
 {
 	auto type = uniforms[handle.index].type;
-	uniform_buffer[front_buffer].Add(handle, type, num, data);
+	uniform_buffer.Add(handle, type, num, data);
 }
 
 #pragma endregion
@@ -1848,26 +1846,21 @@ void render::Submit(LayerHandle layer, ProgramHandle program, uint32_t depth, bo
 		current_draw.uniform_start = 0;
 	}
 
-	//Todo: Check on the memory order stuff - not entirely sure this is correct.
-	//Note: May want to figure out a better way to store keys, since this will have multiple threads writing to the same cache line.
-
-	unsigned int index = key_index[front_buffer].fetch_add(1, std::memory_order_relaxed);
+	unsigned int index = key_index++;
 	key.sequence = 0;//TODO: Something about sequential rendering needs to go here.
 	auto encoded_key = key.Encode();
 
 	current_draw.program = program;
 	//Handle Uniforms
-	auto uniform_end = uniform_buffer[front_buffer].GetWritePosition();
-	current_draw.uniform_buffer = &uniform_buffer[front_buffer];
+	auto uniform_end = uniform_buffer.GetWritePosition();
 	current_draw.uniform_end = uniform_end;
 	//This stuff is thread local, so doesn't need to be atomic.
 
 	//TODO: Really don't like the naming here - very unclear. This code is brittle as hell.
-	auto buffer = &render_buffer[front_buffer];
-	auto draw_index = render_buffer_count[front_buffer];
+	auto buffer = &render_buffer;
+	auto draw_index = render_buffer_count++;
 	(*buffer)[draw_index] = current_draw;
-	keys[front_buffer][index] = { encoded_key,  &(*buffer)[draw_index] };
-	render_buffer_count[front_buffer] = (draw_index + 1) % MAX_DRAWS_PER_THREAD;
+	keys[index] = { encoded_key,  &(*buffer)[draw_index] };
 
 	if (!preserve_state) {
 		//Note: Could replace this with a default constructor for DrawCmd.
@@ -1879,9 +1872,6 @@ void render::Submit(LayerHandle layer, ProgramHandle program, uint32_t depth, bo
 
 namespace
 {
-std::atomic_bool render_thread_active;
-std::atomic_bool frame_ready;
-unsigned int back_buffer;
 
 struct
 {
@@ -1896,7 +1886,7 @@ void Render()
 	//Do any pre-render stuff wrt resources that need management.
 	pre_buffer.Execute(FrameData.pre_buffer_end);
 
-	SortKeys(back_buffer);
+	SortKeys();
 
 	//Need to store the current state of the important stuff
 	IndexBufferHandle index_buffer_handle{ INVALID_HANDLE };
@@ -1918,12 +1908,12 @@ void Render()
 	glScissor(scissor[0], scissor[1], scissor[2], scissor[3]);
 
 
-	unsigned int num_commands = key_index[back_buffer];
+	unsigned int num_commands = key_index;
 	glClearColor(0.f, 0.f, 0.f, 1.f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	for (unsigned int command_index = 0; command_index < num_commands; command_index++) {
-		auto encoded_key = keys[back_buffer][command_index];
+		auto encoded_key = keys[command_index];
 
 		auto cmd = encoded_key.cmd;
 		auto key = Key::Decode(encoded_key.key);
@@ -1937,7 +1927,7 @@ void Render()
 		}
 
 		//Update uniforms
-		cmd->uniform_buffer->Execute(program, cmd->uniform_start, cmd->uniform_end);
+		uniform_buffer.Execute(program, cmd->uniform_start, cmd->uniform_end);
 
 		//Set textures:
 		for (int tex_unit = 0; tex_unit < MAX_TEXTURE_UNITS; tex_unit++) {
@@ -2149,8 +2139,8 @@ void Render()
 		}
 	}
 
-	key_index[back_buffer] = 0;
-
+	key_index = 0;
+	render_buffer_count = 0;
 	post_buffer.Execute(FrameData.post_buffer_end);
 
 	FreeMemory();
@@ -2185,14 +2175,11 @@ void render::Initialize(GLFWwindow* window)
 
 void render::EndFrame()
 {
-	//This is basically a sync point. So at this point, the render thread should be doing nothing.
 	FrameData.pre_buffer_end = pre_buffer.GetWritePosition();
 	FrameData.post_buffer_end = post_buffer.GetWritePosition();
-
-	back_buffer = front_buffer.fetch_xor(1);
 	frame++;
-	frame_ready = true;
-
+	
 	Render();
+
 	glfwSwapBuffers(current_window);
 }

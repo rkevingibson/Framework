@@ -37,7 +37,7 @@ RENDER_HANDLE(TextureHandle);
 
 constexpr uint32_t INVALID_HANDLE = std::numeric_limits<uint32_t>::max();
 
-constexpr uint32_t MAX_DRAWS_PER_THREAD = 2048;
+constexpr uint32_t MAX_DRAWS_PER_THREAD = 4096;
 constexpr uint32_t MAX_DRAWS_PER_FRAME = 4 * MAX_DRAWS_PER_THREAD;
 constexpr uint32_t MAX_RENDER_LAYERS = 256;
 constexpr uint32_t MAX_VERTEX_BUFFERS = 1024;
