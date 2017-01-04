@@ -10,6 +10,8 @@
 #include "../External/imgui/imgui.h"
 #include "../Renderer/Renderer.h"
 
+using namespace rkg;
+
 namespace {
 	struct {
 		GLFWwindow* window;
@@ -70,8 +72,8 @@ namespace {
 		uintptr_t index_offset = 0;
 		for (int n = 0; n < draw_data->CmdListsCount; n++) {
 			const auto cmd_list = draw_data->CmdLists[n];
-			memcpy((void*)((uintptr_t)vert_data->data + vert_offset), cmd_list->VtxBuffer.Data, cmd_list->VtxBuffer.size() * sizeof(ImDrawVert));
-			memcpy((void*)((uintptr_t)index_data->data + index_offset), cmd_list->IdxBuffer.Data, cmd_list->IdxBuffer.size() * sizeof(ImDrawIdx));
+			memcpy((void*)((uintptr_t)vert_data->ptr + vert_offset), cmd_list->VtxBuffer.Data, cmd_list->VtxBuffer.size() * sizeof(ImDrawVert));
+			memcpy((void*)((uintptr_t)index_data->ptr + index_offset), cmd_list->IdxBuffer.Data, cmd_list->IdxBuffer.size() * sizeof(ImDrawIdx));
 			vert_offset += cmd_list->VtxBuffer.size() * sizeof(ImDrawVert);
 			index_offset += cmd_list->IdxBuffer.size() * sizeof(ImDrawIdx);
 		}

@@ -2,6 +2,8 @@
 
 #include <stdlib.h>
 
+#include "Utilities.h"
+
 /*
 	Memory allocators.
 	Designed to be composable, and relatively simple.
@@ -26,23 +28,10 @@
 namespace rkg
 {
 
-struct MemoryBlock
-{
-	void* ptr;
-	size_t length;
-};
 
-inline size_t RoundToAligned(size_t n, size_t alignment)
-{
-	//Todo: need to figure out alignment. 
-	//Not every allocator should be aligned the same.
-	return n;
-}
 
-constexpr inline unsigned int Min(unsigned int a, unsigned int b)
-{
-	return (a < b) ? a : b;
-}
+
+
 
 template<class Primary, class Fallback>
 class FallbackAllocator
@@ -54,7 +43,13 @@ class FallbackAllocator
 		and uses Fallback if that fails.
 	*/
 public:
-	static constexpr unsigned int alignment = Min(Primary::alignment, Fallback::alignment);
+	static constexpr unsigned int ALIGNMENT = Min(Primary::ALIGNMENT, Fallback::ALIGNMENT);
+
+	FallbackAllocator() = default;
+	FallbackAllocator(const FallbackAllocator&) = default;
+	FallbackAllocator(FallbackAllocator&&) = default;
+	FallbackAllocator& operator=(const FallbackAllocator&) = default;
+	FallbackAllocator& operator=(FallbackAllocator&&) = default;
 
 	inline MemoryBlock Allocate(size_t)
 	{
@@ -65,7 +60,17 @@ public:
 		return r;
 	}
 
-	void Deallocate(MemoryBlock)
+	inline void Reallocate(MemoryBlock& b, size_t new_size)
+	{
+		if (p_.Owns(b)) {
+			return p_.Reallocate(b, new_size);
+		}
+		else {
+			return f_.Reallocate(b, new_size);
+		}
+	}
+
+	void Deallocate(MemoryBlock b)
 	{
 		if (p_.Owns(b)) {
 			p_.Deallocate(b);
@@ -94,7 +99,7 @@ private:
 
 
 public:
-	static constexpr unsigned alignment = Alignment;
+	static constexpr unsigned ALIGNMENT = Alignment;
 
 	StackAllocator() : head_(stack_)
 	{
@@ -188,7 +193,7 @@ private:
 
 	Node* root_;
 public:
-	static constexpr unsigned int alignment = A::alignment;
+	static constexpr unsigned int ALIGNMENT = A::ALIGNMENT;
 
 	MemoryBlock Allocate(size_t n)
 	{
@@ -225,7 +230,7 @@ class Segregator
 	LargeAllocator large;
 
 public:
-	static constexpr unsigned int alignment = Min(SmallAllocator::alignment, LargeAllocator::alignment);
+	static constexpr unsigned int ALIGNMENT = Min(SmallAllocator::ALIGNMENT, LargeAllocator::ALIGNMENT);
 
 	MemoryBlock Allocate(size_t n)
 	{
@@ -299,6 +304,69 @@ public:
 	}
 };
 
+
+/*
+	Affix Allocator:
+	Allocates using the supplied allocator, but with extra space before and after to make room for a prefix and suffix.
+	The returned memory block is to the original allocation, so the prefix/suffix space can be ignored.
+	Should be used by a child allocator (using private inheritance) to specify behaviour about the prefix and suffix.
+
+*/
+template<class Allocator, class Prefix, class Suffix = void>
+class AffixAllocator
+{
+	Allocator allocator_;
+public:
+	static constexpr unsigned int ALIGNMENT = Allocator::ALIGNMENT;
+	static_assert(ALIGNMENT >= alignof(Prefix), "Invalid alignment for prefix.");
+
+	MemoryBlock Allocate(size_t n)
+	{
+		//Need to allocate n + sizeof(Prefix) + sizeof(Suffix) at least, plus anything needed for alignment.
+		size_t size = RoundToAligned(sizeof(Prefix), ALIGNMENT)
+			+ RoundToAligned(n, alignof(Suffix))
+			+ sizeof(Suffix);
+		MemoryBlock block = allocator_.Allocate(size);
+
+		if (block.length != 0) {
+			block.ptr = reinterpret_cast<void*>(reinterpret_cast<char*>(block.ptr) + RoundToAligned(sizeof(Prefix), ALIGNMENT));
+			block.length = block.length - RoundToAligned(sizeof(Prefix), ALIGNMENT) - sizeof(Suffix);
+		}
+
+		return block;
+	}
+
+	void Deallocate(MemoryBlock b)
+	{
+		b.length += RoundToAligned(sizeof(Prefix), ALIGNMENT) + sizeof(Suffix);
+		b.ptr = reinterpret_cast<void*>(reinterpret_cast<char*>(block.ptr) - RoundToAligned(sizeof(Prefix), ALIGNMENT));
+		allocator_.Deallocate(b);
+	}
+
+	void Reallocate(MemoryBlock& b, size_t new_size)
+	{
+		b.length += RoundToAligned(sizeof(Prefix), ALIGNMENT) + sizeof(Suffix);
+		b.ptr = reinterpret_cast<void*>(reinterpret_cast<char*>(block.ptr) - RoundToAligned(sizeof(Prefix), ALIGNMENT));
+		size_t size = RoundToAligned(sizeof(Prefix), ALIGNMENT)
+			+ RoundToAligned(n, alignof(Suffix))
+			+ sizeof(Suffix);
+
+		allocator_.Reallocate(b, size);
+
+		if (block.length != 0) {
+			block.ptr = reinterpret_cast<void*>(reinterpret_cast<char*>(block.ptr) + RoundToAligned(sizeof(Prefix), ALIGNMENT));
+			block.length = block.length - RoundToAligned(sizeof(Prefix), ALIGNMENT) - sizeof(Suffix);
+		}
+	}
+
+	bool Owns(MemoryBlock b)
+	{
+		b.length += RoundToAligned(sizeof(Prefix), ALIGNMENT) + sizeof(Suffix);
+		b.ptr = reinterpret_cast<void*>(reinterpret_cast<char*>(block.ptr) - RoundToAligned(sizeof(Prefix), ALIGNMENT));
+		return allocator_.Owns(b);
+	}
+};
+
 /*
 	Allocator which uses malloc to create its memory blocks.
 	Good to use as a final fallback.
@@ -306,7 +374,7 @@ public:
 class Mallocator
 {
 public:
-	static constexpr unsigned int alignment = 1;
+	static constexpr unsigned int ALIGNMENT = 8; //Actually is 16, on 64bit windows.
 
 	MemoryBlock Allocate(size_t n)
 	{
