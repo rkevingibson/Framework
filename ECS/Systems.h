@@ -6,18 +6,13 @@ namespace ecs {
 	public:
 		virtual void Initialize() = 0;
 		virtual void FixedUpdate() = 0;
-		virtual void Update() = 0;
+		virtual void Update(double delta_time) = 0;
 		virtual void LateUpdate() = 0;
-
-
-
 	};	
 
 	void AddSystem(System* );
-
-	void FixedUpdate();
-	void Update();
-	void LateUpdate();
+	void Run();
+	void Quit();
 
 }//namespace ecs
 }//namespace rkg
