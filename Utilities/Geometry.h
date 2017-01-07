@@ -6,6 +6,7 @@ namespace rkg {
 
 	struct Vec2 {
 		float x, y;
+
 		inline Vec2() = default;
 		inline Vec2(const Vec2&) = default;
 		inline Vec2(Vec2&&) = default;

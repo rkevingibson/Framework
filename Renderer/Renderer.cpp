@@ -1099,10 +1099,10 @@ struct CreateProgramCmd : Cmd
 {
 	static constexpr DispatchFn DISPATCH = { CreateProgram };
 	uint32_t index;
-	const MemoryBlock* vert_shader;
-	const MemoryBlock* frag_shader;
-	const MemoryBlock* compute_shader;
-	const MemoryBlock* geom_shader;
+	const MemoryBlock* vert_shader{ nullptr };
+	const MemoryBlock* frag_shader{ nullptr };
+	const MemoryBlock* compute_shader{ nullptr };
+	const MemoryBlock* geom_shader{ nullptr };
 };
 void CreateProgram(Cmd* cmd)
 {

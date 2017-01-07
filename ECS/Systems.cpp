@@ -11,6 +11,7 @@
 #include "Renderer/Renderer.h"
 #include "Utilities/GuiBasics.h"
 #include "Utilities/Utilities.h"
+#include "Utilities/Input.h"
 
 namespace rkg {
 namespace ecs {
@@ -20,19 +21,20 @@ namespace ecs {
 		bool running;
 
 
-		static void GLFWErrorCallback(int error, const char* description)
+		void GLFWErrorCallback(int error, const char* description)
 		{
 
 		}
 
-		static void ResizeCallback(GLFWwindow* win, int w, int h)
+		void ResizeCallback(GLFWwindow* win, int w, int h)
 		{
+			rkg::Input::ScreenSize = { (float)w, (float)h };
 			rkg::render::Resize(w, h);
 		}
 
 		//TODO: Figure out how to store this user input to be used later by the systems.
 		//Systems should be able to poll for this information.
-		static void KeyCallback(GLFWwindow* win, int key, int scancode, int action, int mods)
+		void KeyCallback(GLFWwindow* win, int key, int scancode, int action, int mods)
 		{
 			rkg::ImguiKeyCallback(key, action);
 			if (!ImGui::GetIO().WantCaptureKeyboard) {
@@ -40,7 +42,7 @@ namespace ecs {
 			}
 		}
 
-		static void UnicodeCallback(GLFWwindow* win, unsigned int codepoint)
+		void UnicodeCallback(GLFWwindow* win, unsigned int codepoint)
 		{
 			rkg::ImguiCharCallback(codepoint);
 			if (!ImGui::GetIO().WantCaptureKeyboard) {
@@ -48,33 +50,33 @@ namespace ecs {
 			}
 		}
 
-		static void CursorCallback(GLFWwindow* win, double xpos, double ypos)
+		void CursorCallback(GLFWwindow* win, double xpos, double ypos)
 		{
 			if (!ImGui::GetIO().WantCaptureMouse) {
-			
+				rkg::Input::MousePosition = Vec2{ (float)xpos, (float)ypos };
 			}
 		}
 
-		static void MouseButtonCallback(GLFWwindow* win, int button, int action, int mods)
+		void MouseButtonCallback(GLFWwindow* win, int button, int action, int mods)
 		{
 			rkg::ImguiMouseButtonCallback(button, action);
 			if (!ImGui::GetIO().WantCaptureMouse) {
-				if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
-
-					double x, y;
-					glfwGetCursorPos(win, &x, &y);
-				}
-				else {
-				}
+				//NOTE: This relies on GLFW not changing their mapping from buttons to numbers. 
+				//Probably a bad idea to assume that won't change, but it seems reasonable. Left = 0, Right = 1, Middle = 2. Why would that change?
+				bool pressed = (action == GLFW_PRESS);
+				rkg::Input::MouseButton[button] = pressed;
+				rkg::Input::MouseButtonPressed[button] = pressed;
+				rkg::Input::MouseButtonReleased[button] = !pressed;
 			}
 		}
 
-		static void ScrollCallback(GLFWwindow* win, double xoffset, double yoffset)
+		void ScrollCallback(GLFWwindow* win, double xoffset, double yoffset)
 		{
 			rkg::ImguiScrollCallback(yoffset);
 
 			if (!ImGui::GetIO().WantCaptureMouse)
 			{
+				rkg::Input::MouseWheelDelta = Vec2{ (float)xoffset, (float)yoffset }; //Usually we care about yoffset, maybe I should put it first?
 			}
 		}
 
@@ -138,6 +140,12 @@ namespace ecs {
 
 		while (!glfwWindowShouldClose(window) && running)
 		{
+			//Reset inputs before processing new ones.
+			for (int i = 0; i < 3; i++) {
+				rkg::Input::MouseButtonPressed[i] = false;
+				rkg::Input::MouseButtonReleased[i] = false;
+				rkg::Input::MouseWheelDelta = { 0.0f,0.0f };
+			}
 			glfwPollEvents();
 			rkg::ImguiNewFrame();
 			
@@ -157,8 +165,13 @@ namespace ecs {
 			}
 
 			//Do render here... it should probably be a hardcoded system.
+			ImGui::Render();
 			rkg::render::EndFrame();
 		}
+
+
+		glfwDestroyWindow(window);
+		glfwTerminate();
 	}
 
 	void Quit()
