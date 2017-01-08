@@ -31,6 +31,7 @@ RENDER_HANDLE(ProgramHandle);
 RENDER_HANDLE(UniformHandle);
 RENDER_HANDLE(DynamicVertexBufferHandle);
 RENDER_HANDLE(DynamicIndexBufferHandle);
+RENDER_HANDLE(SSBOHandle);
 RENDER_HANDLE(TextureHandle);
 
 
@@ -254,6 +255,12 @@ DynamicIndexBufferHandle	CreateDynamicIndexBuffer(IndexType type);
 void	UpdateDynamicIndexBuffer(DynamicIndexBufferHandle handle, const MemoryBlock* data, const ptrdiff_t offset = 0);
 #pragma endregion
 
+#pragma region SSBO Functions
+SSBOHandle	CreateShaderStorageBuffer(const MemoryBlock* data);
+void	UpdateShaderStorageBuffer(SSBOHandle handle, const MemoryBlock* data);
+
+#pragma endregion
+
 #pragma region Texture Functions
 TextureHandle CreateTexture2D(uint16_t width, uint16_t height, TextureFormat format, const MemoryBlock* data = nullptr);
 void UpdateTexture2D(TextureHandle handle, const MemoryBlock* data);
@@ -285,6 +292,7 @@ void SetVertexBuffer(DynamicVertexBufferHandle h, uint32_t first_vertex = 0, uin
 void SetIndexBuffer(IndexBufferHandle h, uint32_t first_element = 0, uint32_t num_elements = UINT32_MAX);
 void SetIndexBuffer(DynamicIndexBufferHandle h, uint32_t first_element = 0, uint32_t num_elements = UINT32_MAX);
 void SetTexture(TextureHandle tex, UniformHandle sampler, uint16_t texture_unit);
+void SetSSBO(SSBOHandle h, uint32_t binding);
 void SetScissor(uint32_t x, uint32_t y, uint32_t w, uint32_t h);
 
 

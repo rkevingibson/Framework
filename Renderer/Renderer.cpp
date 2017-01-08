@@ -1336,13 +1336,19 @@ struct CreateDynamicVertexBufferCmd : Cmd
 	static constexpr DispatchFn DISPATCH = { CreateDynamicVertexBuffer };
 	const MemoryBlock* block;
 };
+
+struct CreateBufferCmd : Cmd
+{
+	uint32_t index;
+};
+
 void CreateDynamicVertexBuffer(Cmd* cmd)
 {
 	auto data = reinterpret_cast<CreateDynamicVertexBufferCmd*>(cmd);
 	GLuint vb;
 	glGenBuffers(1, &vb);
 	glBindBuffer(GL_ARRAY_BUFFER, vb);
-	if (data->block != nullptr) {
+	if (data->block) {
 		glBufferData(GL_ARRAY_BUFFER, data->block->length, data->block->ptr, GL_DYNAMIC_DRAW);
 	}
 	vertex_buffers[data->index].buffer = vb;
@@ -1607,6 +1613,15 @@ void render::UpdateDynamicIndexBuffer(DynamicIndexBufferHandle handle, const Mem
 	cmd.offset = offset;
 	cmd.ib = handle;
 	pre_buffer.Push(cmd);
+}
+
+#pragma endregion
+
+#pragma region SSBO Functions
+
+SSBOHandle render::CreateShaderStorageBuffer(const MemoryBlock* data)
+{
+
 }
 
 #pragma endregion
