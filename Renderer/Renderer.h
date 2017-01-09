@@ -43,6 +43,7 @@ constexpr uint32_t MAX_RENDER_LAYERS = 256;
 constexpr uint32_t MAX_VERTEX_BUFFERS = 1024;
 constexpr uint32_t MAX_INDEX_BUFFERS = 1024;
 constexpr uint32_t MAX_SHADER_STORAGE_BUFFERS = 512;
+constexpr uint32_t MAX_SSBO_BINDINGS = 8;
 constexpr uint32_t MAX_TEXTURES = 1024;
 constexpr uint32_t MAX_TEXTURE_UNITS = 16;
 constexpr uint32_t MAX_UNIFORMS = 256;
@@ -292,7 +293,7 @@ void SetVertexBuffer(DynamicVertexBufferHandle h, uint32_t first_vertex = 0, uin
 void SetIndexBuffer(IndexBufferHandle h, uint32_t first_element = 0, uint32_t num_elements = UINT32_MAX);
 void SetIndexBuffer(DynamicIndexBufferHandle h, uint32_t first_element = 0, uint32_t num_elements = UINT32_MAX);
 void SetTexture(TextureHandle tex, UniformHandle sampler, uint16_t texture_unit);
-void SetSSBO(SSBOHandle h, uint32_t binding);
+void SetShaderStorageBuffer(SSBOHandle h, uint32_t binding);
 void SetScissor(uint32_t x, uint32_t y, uint32_t w, uint32_t h);
 
 

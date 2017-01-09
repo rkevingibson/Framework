@@ -146,6 +146,7 @@ typedef void (GLAPI DEBUGPROC)(GLenum source, GLenum type, GLuint id, GLenum sev
 	GLX(void, BindVertexArray, GLuint vao) \
 	GLX(void, GenVertexArrays, GLuint n, GLuint* vaos) \
 	GLX(void, DeleteBuffers, GLuint n, GLuint* buffers) \
+	GLX(void, BindBufferBase, GLenum target, GLuint index, GLuint buffer) \
 	/*Misc functions*/ \
 	GLX(void, BlendEquation, GLenum eq) \
 	GLX(void, ActiveTexture, GLenum texture) \
@@ -311,7 +312,6 @@ private:
 	uint32_t read_pos_;
 	std::array<rkg::byte, Size> buffer_;
 };
-
 
 template<typename T, uint32_t Size>
 class ResourceList
@@ -489,6 +489,19 @@ struct RenderCmd
 
 	//Textures
 	TextureHandle textures[MAX_TEXTURE_UNITS];
+
+	GLuint ssbos[MAX_SSBO_BINDINGS];
+
+	RenderCmd() 
+	{
+		for (int i = 0; i < MAX_TEXTURE_UNITS; i++) {
+			textures[i].index = INVALID_HANDLE;
+		}
+
+		for (int i = 0; i < MAX_SSBO_BINDINGS; i++) {
+			ssbos[i]= UINT32_MAX;
+		}
+	}
 };
 
 struct DrawCmd : public RenderCmd
@@ -496,9 +509,6 @@ struct DrawCmd : public RenderCmd
 	//Store everything needed to make any type of draw call
 	DrawCmd()
 	{
-		for (int i = 0; i < MAX_TEXTURE_UNITS; i++) {
-			textures[i].index = INVALID_HANDLE;
-		}
 		scissor[0] = 0;
 		scissor[1] = 0;
 		scissor[2] = UINT32_MAX;
@@ -540,6 +550,7 @@ struct EncodedKey
 #pragma region Per-Frame Data
 
 std::array<EncodedKey, MAX_DRAWS_PER_FRAME>	keys;
+RenderCmd current_rendercmd;
 DrawCmd current_draw;
 ComputeCmd current_compute;
 
@@ -1012,7 +1023,7 @@ void GLAPI GLErrorCallback(GLenum source, GLenum type, GLuint id, GLenum severit
 		break;
 	}
 
-	//printf(message);
+	printf(message);
 }
 }
 
@@ -1120,11 +1131,14 @@ void CreateProgram(Cmd* cmd)
 	auto data = reinterpret_cast<CreateProgramCmd*>(cmd);
 
 	GLuint program;
+	program = glCreateProgram();
 
 	if (data->compute_shader) {
+
 		auto compute = glCreateShader(GL_COMPUTE_SHADER);
 		glShaderSource(compute, 1, (const GLchar**)&data->compute_shader->ptr, nullptr);
 		glCompileShader(compute);
+		glAttachShader(program, compute);
 
 		if (error_callback != nullptr) {
 			GLint status;
@@ -1136,9 +1150,13 @@ void CreateProgram(Cmd* cmd)
 				error_callback(buffer);
 			}
 		}
-	} else {
-		program = glCreateProgram();
 
+		glLinkProgram(program);
+
+		glDeleteShader(compute);
+		DeallocateBlock(data->compute_shader);
+
+	} else {
 		auto vert = glCreateShader(GL_VERTEX_SHADER);
 		glShaderSource(vert, 1, (const GLchar**)&data->vert_shader->ptr, nullptr);
 		glCompileShader(vert);
@@ -1187,10 +1205,14 @@ void CreateProgram(Cmd* cmd)
 		glLinkProgram(program);
 		glDeleteShader(vert);
 		glDeleteShader(frag);
+		DeallocateBlock(data->vert_shader);
+		DeallocateBlock(data->frag_shader);
 
 		if (data->geom_shader) {
 			glDeleteShader(geom);
+			DeallocateBlock(data->geom_shader);
 		}
+
 	}
 
 
@@ -1205,7 +1227,7 @@ void CreateProgram(Cmd* cmd)
 #ifdef RENDER_DEBUG
 		glGetProgramiv(program, GL_ACTIVE_UNIFORM_MAX_LENGTH, &uniform_name_buffer_size);
 		uniform_name_buffer_size++;
-		ASSERT(uniform_name_buffer_size < UNIFORM_NAME_BUFFER_SIZE);
+		ASSERT(num_uniforms < 0 || uniform_name_buffer_size < UNIFORM_NAME_BUFFER_SIZE);
 #endif
 		for (GLint i = 0; i < num_uniforms; ++i) {
 			GLint size;
@@ -1233,8 +1255,7 @@ void CreateProgram(Cmd* cmd)
 
 	programs[data->index].id = program;
 
-	DeallocateBlock(data->vert_shader);
-	DeallocateBlock(data->frag_shader);
+
 }
 
 }
@@ -1341,7 +1362,7 @@ namespace
 void CreateBuffer(Cmd* cmd);
 struct CreateBufferCmd : Cmd
 {
-	static constexpr DispatchFn DISPATCH = {};
+	static constexpr DispatchFn DISPATCH = { CreateBuffer };
 	const MemoryBlock* block;
 	GLenum target;
 	GLenum usage;
@@ -1399,7 +1420,7 @@ struct UpdateDynamicBufferCmd : Cmd
 	uint32_t* size;
 	GLintptr offset;
 	GLenum target;
-	GLuint buffer;
+	GLuint* buffer;
 	const MemoryBlock* block;
 
 };
@@ -1408,7 +1429,7 @@ void UpdateDynamicBuffer(Cmd* cmd)
 {
 	auto data = reinterpret_cast<UpdateDynamicBufferCmd*>(cmd);
 
-	glBindBuffer(data->target, data->buffer);
+	glBindBuffer(data->target, *data->buffer);
 	if (*data->size < data->offset + data->block->length) {
 		//TODO: Right now, this breaks the use of offset, by not copying the data over.
 		glBufferData(data->target, data->offset + data->block->length, 0, GL_DYNAMIC_DRAW);
@@ -1426,7 +1447,7 @@ void render::UpdateDynamicVertexBuffer(DynamicVertexBufferHandle handle, const M
 
 	UpdateDynamicBufferCmd cmd;
 	cmd.block = data;
-	cmd.buffer = vb.buffer;
+	cmd.buffer = &vb.buffer;
 	cmd.offset = offset;
 	cmd.size = &vb.size;
 	cmd.target = GL_ARRAY_BUFFER;
@@ -1610,7 +1631,7 @@ void render::UpdateShaderStorageBuffer(SSBOHandle handle, const MemoryBlock* dat
 
 	UpdateDynamicBufferCmd cmd;
 	cmd.block = data;
-	cmd.buffer = ssbo.buffer;
+	cmd.buffer = &ssbo.buffer;
 	cmd.size = &ssbo.size;
 	cmd.target = GL_SHADER_STORAGE_BUFFER;
 	cmd.offset = 0;
@@ -1892,7 +1913,12 @@ void render::SetTexture(TextureHandle tex, UniformHandle sampler, uint16_t textu
 {
 	GLint unit = texture_unit;
 	SetUniform(sampler, &unit);
-	current_draw.textures[texture_unit] = tex;
+	current_rendercmd.textures[texture_unit] = tex;
+}
+
+void render::SetShaderStorageBuffer(SSBOHandle h, uint32_t binding)
+{
+	current_rendercmd.ssbos[binding] = shader_storage_buffers[h.index].buffer;
 }
 
 void render::SetScissor(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
@@ -1916,23 +1942,22 @@ void render::Submit(uint8_t layer, ProgramHandle program, uint32_t depth, bool p
 	key.sequence = index;//TODO: Something about sequential rendering needs to go here.
 	auto encoded_key = key.Encode();
 
-	current_draw.program = program;
+	current_rendercmd.program = program;
 	//Handle Uniforms
 	auto uniform_end = uniform_buffer.GetWritePosition();
-	current_draw.uniform_end = uniform_end;
-	//This stuff is thread local, so doesn't need to be atomic.
+	current_rendercmd.uniform_end = uniform_end;
 
-	//TODO: Really don't like the naming here - very unclear. This code is brittle as hell.
-	auto buffer = &render_buffer;
 	auto draw_index = render_buffer_count++;
-	(*buffer)[draw_index] = current_draw;
-	keys[index] = { encoded_key,  &(*buffer)[draw_index] };
+	render_buffer[draw_index] = current_draw;
+	memcpy(&render_buffer[draw_index], &current_rendercmd, sizeof(RenderCmd));
+
+	keys[index] = { encoded_key,  &render_buffer[draw_index] };
 
 	if (!preserve_state) {
 		current_draw = DrawCmd{};
+		current_rendercmd = RenderCmd{};
 	}
-	current_draw.uniform_start = uniform_end;
-	current_compute.uniform_start = uniform_end;
+	current_rendercmd.uniform_start = uniform_end;
 }
 
 void render::SubmitCompute(uint8_t layer, ProgramHandle program, uint16_t num_x, uint16_t num_y, uint16_t num_z)
@@ -1949,18 +1974,22 @@ void render::SubmitCompute(uint8_t layer, ProgramHandle program, uint16_t num_x,
 	key.sequence = 0;//TODO: Something about sequential rendering needs to go here.
 	auto encoded_key = key.Encode();
 
-	current_compute.program = program;
+	current_rendercmd.program = program;
+	current_compute.x = num_x;
+	current_compute.y = num_y;
+	current_compute.z = num_z;
+
 	//Handle Uniforms
 	auto uniform_end = uniform_buffer.GetWritePosition();
-	current_compute.uniform_end = uniform_end;
+	current_rendercmd.uniform_end = uniform_end;
 
 	auto compute_index = compute_buffer_count++;
 	compute_buffer[compute_index] = current_compute;
 	keys[index] = { encoded_key, &compute_buffer[compute_index] };
 
 	current_compute = ComputeCmd{};
-	current_compute.uniform_start = uniform_end;
-	current_draw.uniform_start = uniform_end; //Note: Do I want this? Means I cant switch between setting uniforms for compute and draw. Should be fine.
+	current_rendercmd = RenderCmd{};
+	current_rendercmd.uniform_start = uniform_end;
 }
 
 namespace
@@ -2033,6 +2062,15 @@ void Render()
 			}
 		}
 
+		//Bind any SSBOs:
+		for (int ssbo_binding = 0; ssbo_binding < MAX_SSBO_BINDINGS; ssbo_binding++) {
+			if (cmd->ssbos[ssbo_binding] != UINT32_MAX) {
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER,
+								 ssbo_binding,
+								 cmd->ssbos[ssbo_binding]);
+			}
+		}
+
 		//Compute commands handled here
 		if (key.compute) {
 			auto compute_cmd = reinterpret_cast<ComputeCmd*>(cmd);
@@ -2044,6 +2082,7 @@ void Render()
 		auto draw_cmd = reinterpret_cast<DrawCmd*>(cmd);
 
 		//Check view and update it
+		//TODO: Views!!!
 
 		//Update rasterization state
 		if (raster_state != draw_cmd->render_state) //Raster state has changed.
@@ -2219,7 +2258,7 @@ void Render()
 
 			glDrawElementsBaseVertex(primitive_type, num_elements,
 									 ib.type,
-									 (GLvoid*)(offset),
+									 NULL,
 									 draw_cmd->vertex_offset);
 		} else {
 			//NOTE: Take a look, vertex offset might have the same problem as index offset did.
