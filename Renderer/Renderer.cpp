@@ -404,6 +404,7 @@ struct Key
 	{
 		uint64_t result = 0 |
 			((uint64_t)layer << 56) |
+			(((uint64_t)compute & 0x1) << 55) |
 			(((uint64_t)sequence & 0x7FF) << 44) |
 			(((uint64_t)program & 0xFFF) << 32) |
 			depth;
@@ -739,10 +740,6 @@ public:
 			default:
 				break;
 			}
-		}
-
-		if (buffer_.GetReadPos() == buffer_.GetWritePos()) {
-			buffer_.Clear();
 		}
 	}
 
@@ -1237,6 +1234,8 @@ void CreateProgram(Cmd* cmd)
 			glGetActiveUniform(program, i, UNIFORM_NAME_BUFFER_SIZE, &length,
 							   &size, &type, uniform_name_buffer);
 			auto loc = glGetUniformLocation(program, uniform_name_buffer);
+
+			if (loc < 0) continue;
 			rkg::MurmurHash murmur;
 			murmur.Add(uniform_name_buffer, length);
 			auto hash = murmur.Finish();
@@ -1983,8 +1982,10 @@ void render::SubmitCompute(uint8_t layer, ProgramHandle program, uint16_t num_x,
 	auto uniform_end = uniform_buffer.GetWritePosition();
 	current_rendercmd.uniform_end = uniform_end;
 
+
 	auto compute_index = compute_buffer_count++;
 	compute_buffer[compute_index] = current_compute;
+	memcpy(&compute_buffer[compute_index], &current_rendercmd, sizeof(RenderCmd));
 	keys[index] = { encoded_key, &compute_buffer[compute_index] };
 
 	current_compute = ComputeCmd{};
@@ -2275,7 +2276,7 @@ void Render()
 	render_buffer_count = 0;
 	compute_buffer_count = 0;
 	post_buffer.Execute(FrameData.post_buffer_end);
-
+	uniform_buffer.Clear();
 	FreeMemory();
 }
 }

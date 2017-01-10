@@ -75,6 +75,8 @@ namespace rkg {
 
 	inline uint32_t MurmurHash::Finish()
 	{
+		if (slop_ > 0) Add(0);
+
 		hash_ ^= len_;
 		hash_ ^= (hash_ >> 16);
 		hash_ *= 0x85ebca6b;
