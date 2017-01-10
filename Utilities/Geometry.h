@@ -183,6 +183,14 @@ namespace rkg {
 	struct Vec4 {
 		float x, y, z, w;
 
+		Vec4() = default;
+		Vec4(const Vec4&) = default;
+		Vec4(Vec4&&) = default;
+		Vec4(float x, float y, float z, float w = 1) : x(x), y(y), z(z), w(w) {}
+		Vec4(const Vec3& v) : x(v.x), y(v.y), z(v.z), w(1) {}
+		Vec4& operator=(const Vec4&) = default;
+		Vec4& operator=(Vec4&&) = default;
+
 		//====================Compound Operators====================//
 
 		//Vector addition
