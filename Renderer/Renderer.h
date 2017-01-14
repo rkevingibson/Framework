@@ -31,6 +31,7 @@ RENDER_HANDLE(ProgramHandle);
 RENDER_HANDLE(UniformHandle);
 RENDER_HANDLE(DynamicVertexBufferHandle);
 RENDER_HANDLE(DynamicIndexBufferHandle);
+RENDER_HANDLE(AtomicCounterBufferHandle);
 RENDER_HANDLE(SSBOHandle);
 RENDER_HANDLE(TextureHandle);
 
@@ -42,8 +43,10 @@ constexpr uint32_t MAX_DRAWS_PER_FRAME = 4 * MAX_DRAWS_PER_THREAD;
 constexpr uint32_t MAX_RENDER_LAYERS = 256;
 constexpr uint32_t MAX_VERTEX_BUFFERS = 1024;
 constexpr uint32_t MAX_INDEX_BUFFERS = 1024;
-constexpr uint32_t MAX_SHADER_STORAGE_BUFFERS = 512;
+constexpr uint32_t MAX_SHADER_STORAGE_BUFFERS = 64;
+constexpr uint32_t MAX_ATOMIC_COUNTER_BUFFERS = 64;
 constexpr uint32_t MAX_SSBO_BINDINGS = 8;
+constexpr uint32_t MAX_ATOMIC_COUNTER_BINDINGS = 8;
 constexpr uint32_t MAX_TEXTURES = 1024;
 constexpr uint32_t MAX_TEXTURE_UNITS = 16;
 constexpr uint32_t MAX_UNIFORMS = 256;
@@ -256,9 +259,11 @@ DynamicIndexBufferHandle	CreateDynamicIndexBuffer(IndexType type);
 void	UpdateDynamicIndexBuffer(DynamicIndexBufferHandle handle, const MemoryBlock* data, const ptrdiff_t offset = 0);
 #pragma endregion
 
-#pragma region SSBO Functions
+#pragma region Misc Buffer Functions
 SSBOHandle	CreateShaderStorageBuffer(const MemoryBlock* data);
 void	UpdateShaderStorageBuffer(SSBOHandle handle, const MemoryBlock* data);
+AtomicCounterBufferHandle CreateAtomicCounterBuffer(const MemoryBlock* data);
+void	UpdateAtomicCounterBuffer(AtomicCounterBufferHandle handle, const MemoryBlock* data);
 
 #pragma endregion
 
@@ -294,10 +299,8 @@ void SetIndexBuffer(IndexBufferHandle h, uint32_t first_element = 0, uint32_t nu
 void SetIndexBuffer(DynamicIndexBufferHandle h, uint32_t first_element = 0, uint32_t num_elements = UINT32_MAX);
 void SetTexture(TextureHandle tex, UniformHandle sampler, uint16_t texture_unit);
 void SetShaderStorageBuffer(SSBOHandle h, uint32_t binding);
+void SetAtomicCounterBuffer(AtomicCounterBufferHandle h, uint32_t binding);
 void SetScissor(uint32_t x, uint32_t y, uint32_t w, uint32_t h);
-
-
-
 
 //Submit a draw call using the currently bound buffers.
 void Submit(uint8_t layer, ProgramHandle program, uint32_t depth = 0, bool preserve_state = false);
