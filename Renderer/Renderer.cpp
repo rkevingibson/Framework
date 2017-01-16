@@ -2130,10 +2130,10 @@ void Render()
 			if (draw_cmd->index_count != UINT32_MAX) {
 				num_elements = draw_cmd->index_count;
 			}
-
+			
 			glDrawElementsBaseVertex(primitive_type, num_elements,
 									 ib.type,
-									 NULL,
+									 (void*)offset,
 									 draw_cmd->vertex_offset);
 		} else {
 			//NOTE: Take a look, vertex offset might have the same problem as index offset did.
@@ -2186,8 +2186,9 @@ void render::EndFrame()
 	frame++;
 
 	Render();
-	current_draw.uniform_start = 0;
-	current_compute.uniform_start = 0;
+
+	current_rendercmd.uniform_start = 0;
+	
 
 	glfwSwapBuffers(current_window);
 }

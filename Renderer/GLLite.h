@@ -84,6 +84,7 @@ typedef void (GLAPI DEBUGPROC)(GLenum source, GLenum type, GLuint id, GLenum sev
 #define GL_SAMPLER_CUBE                   0x8B60
 #define GL_SHADER_STORAGE_BUFFER          0x90D2
 #define GL_ATOMIC_COUNTER_BUFFER          0x92C0
+#define GL_SHADER_STORAGE_BARRIER_BIT     0x00002000
 /*
 Define X-macro of opengl functions to load.
 order is ret, name, args...
@@ -133,7 +134,8 @@ order is ret, name, args...
 	GLX(void, VertexAttribPointer, 	GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const GLvoid * pointer) \
 	GLX(void, EnableVertexAttribArray, GLuint attrib) \
 	GLX(void, DrawElementsBaseVertex, GLenum mode, GLsizei count, GLenum type, GLvoid *indices, GLint basevertex) \
-	GLX(void, DebugMessageCallback, DEBUGPROC callback, void * userParam)
+	GLX(void, DebugMessageCallback, DEBUGPROC callback, void * userParam)\
+	GLX(void, MemoryBarrier, GLbitfield region)
 //TODO: Finish up this list. Want to remove GLEW as a dependency.
 
 #define GLX(ret, name, ...) typedef ret GLAPI name##proc(__VA_ARGS__); name##proc * gl##name;
