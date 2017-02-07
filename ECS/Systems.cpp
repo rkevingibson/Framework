@@ -38,7 +38,8 @@ namespace ecs {
 		{
 			rkg::ImguiKeyCallback(key, action);
 			if (!ImGui::GetIO().WantCaptureKeyboard) {
-
+				//{ GLFW_RELEASE, GLFW_PRESS, GLFW_REPEAT };
+				Input::SetKeyStatus(static_cast<Input::Keyname>(key), static_cast<Input::KeyAction>(action));
 			}
 		}
 
@@ -94,8 +95,9 @@ namespace ecs {
 			glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
 			glfwWindowHint(GLFW_SAMPLES, 2);
 
-			GLFWwindow* window = glfwCreateWindow(600, 400, "Material Editor", nullptr, nullptr);
-
+			Input::ScreenSize = Vec2(600, 400);
+			GLFWwindow* window = glfwCreateWindow(Input::ScreenSize.x, Input::ScreenSize.y, "Material Editor", nullptr, nullptr);
+			
 			if (!window)
 			{
 				glfwTerminate();
@@ -146,8 +148,10 @@ namespace ecs {
 				rkg::Input::MouseButtonReleased[i] = false;
 				rkg::Input::MouseWheelDelta = { 0.0f,0.0f };
 			}
+			Input::NewFrame();
 			glfwPollEvents();
 			rkg::ImguiNewFrame();
+			
 			
 			double new_time = glfwGetTime();
 			double frame_time = new_time - current_time;
