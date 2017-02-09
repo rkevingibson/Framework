@@ -254,7 +254,7 @@ void	UpdateDynamicVertexBuffer(DynamicVertexBufferHandle handle, const MemoryBlo
 
 #pragma region Index Buffer Functions
 IndexBufferHandle	CreateIndexBuffer(const MemoryBlock* data, IndexType type);
-DynamicIndexBufferHandle CreateDynamicIndexBuffer(const MemoryBlock* data, IndexType type);
+DynamicIndexBufferHandle	CreateDynamicIndexBuffer(const MemoryBlock* data, IndexType type);
 DynamicIndexBufferHandle	CreateDynamicIndexBuffer(IndexType type);
 void	UpdateDynamicIndexBuffer(DynamicIndexBufferHandle handle, const MemoryBlock* data, const ptrdiff_t offset = 0);
 #pragma endregion
@@ -262,7 +262,7 @@ void	UpdateDynamicIndexBuffer(DynamicIndexBufferHandle handle, const MemoryBlock
 #pragma region Misc Buffer Functions
 SSBOHandle	CreateShaderStorageBuffer(const MemoryBlock* data);
 void	UpdateShaderStorageBuffer(SSBOHandle handle, const MemoryBlock* data);
-AtomicCounterBufferHandle CreateAtomicCounterBuffer(const MemoryBlock* data);
+AtomicCounterBufferHandle	CreateAtomicCounterBuffer(const MemoryBlock* data);
 void	UpdateAtomicCounterBuffer(AtomicCounterBufferHandle handle, const MemoryBlock* data);
 
 #pragma endregion
