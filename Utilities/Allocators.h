@@ -397,13 +397,13 @@ template<size_t MaximumSize>
 class GrowingLinearAllocator
 {
 private:
-	void* virtual_memory_start_;
-	void* virtual_memory_end_;
-	void* physical_memory_current_;
-	void* physical_memory_end_;
+	char* virtual_memory_start_;
+	char* virtual_memory_end_;
+	char* physical_memory_current_;
+	char* physical_memory_end_;
 
 public:
-	static constexpr unsigned int ALIGNMENT = { 1 };
+	static constexpr unsigned int ALIGNMENT = { alignof(std::max_align_t) };
 
 	GrowingLinearAllocator() :
 		virtual_memory_start_{ virtual_memory::ReserveAddressSpace(MaximumSize) },
@@ -420,16 +420,23 @@ public:
 		physical_memory_end_{ virtual_memory_start_ }
 	{}
 
+	GrowingLinearAllocator(GrowingLinearAllocator&&) = default;
+	GrowingLinearAllocator(const GrowingLinearAllocator&) = delete;
+	GrowingLinearAllocator& operator=(GrowingLinearAllocator&&) = default;
+	GrowingLinearAllocator& operator=(const GrowingLinearAllocator&) = delete;
+
+
 	~GrowingLinearAllocator()
 	{
 		virtual_memory::ReleaseAddressSpace(virtual_memory_start_);
 	}
 
-
 	inline MemoryBlock Allocate(size_t size)
 	{
-		//TODO: Worry about alignment stuff maybe.
-		if (physical_memory_current_ + size > physical_memory_end_) {
+		//TODO: Worry about alignment stuff.
+		size_t size_to_allocate = RoundToAligned(size, ALIGNMENT);
+
+		if (physical_memory_current_ + size_to_allocate > physical_memory_end_) {
 			//Allocate a new page. 
 
 			if (physical_memory_end_ + virtual_memory::PAGE_SIZE > virtual_memory_end_) {
@@ -439,30 +446,44 @@ public:
 			virtual_memory::AllocatePhysicalMemory(physical_memory_end_, virtual_memory::PAGE_SIZE);
 			physical_memory_end_ += virtual_memory::PAGE_SIZE;
 		}
-		MemoryBlock result{ physical_memory_current_, size };
-		physical_memory_current_ += size;
+		
+
+		MemoryBlock result{ physical_memory_current_, size_to_allocate };
+		physical_memory_current_ += size_to_allocate;
 		return result;
 	}
 
 	inline void Reallocate(MemoryBlock&, size_t)
 	{
 		//TODO:
+		ASSERT(false);
 	}
 
 	inline void Deallocate(MemoryBlock)
 	{
 		//TODO:
+		ASSERT(false);
 	}
 
 	inline void DeallocateAll()
 	{
-		virtual_memory::DeallocatePhysicalMemory(virtual_memory_start_, physical_memory_current_ - virtual_memory_start_);
+		virtual_memory::DeallocatePhysicalMemory(virtual_memory_start_, static_cast<char*>(physical_memory_current_) - static_cast<char*>(virtual_memory_start_));
 		physical_memory_current_ = virtual_memory_start_;
 	}
 
 	inline bool Owns(MemoryBlock b)
 	{
 		return b.ptr > physical_memory_start_ && b.ptr < physical_memory_end_;
+	}
+
+	inline char* Begin()
+	{
+		return static_cast<char*>(virtual_memory_start_);
+	}
+
+	inline char* End()
+	{
+		return static_cast<char*>(physical_memory_current_);
 	}
 };
 

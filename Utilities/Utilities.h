@@ -97,9 +97,7 @@ inline size_t log2(size_t v)
 
 inline size_t RoundToAligned(size_t n, size_t alignment)
 {
-	//Todo: need to figure out alignment. 
-	//Not every allocator should be aligned the same.
-	return n;
+	return (n + alignment - 1) & ~(alignment - 1);
 }
 
 //Round up n to the nearest power of 2.
