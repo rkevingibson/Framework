@@ -28,11 +28,6 @@
 namespace rkg
 {
 
-
-
-
-
-
 template<class Primary, class Fallback>
 class FallbackAllocator
 {
@@ -64,8 +59,7 @@ public:
 	{
 		if (p_.Owns(b)) {
 			return p_.Reallocate(b, new_size);
-		}
-		else {
+		} else {
 			return f_.Reallocate(b, new_size);
 		}
 	}
@@ -273,8 +267,7 @@ public:
 
 		if (b.length <= threshold) {
 			return small.Expand(b, delta);
-		}
-		else {
+		} else {
 			return large.Expand(b, delta);
 		}
 	}
@@ -399,5 +392,96 @@ public:
 		}
 	}
 };
+
+template<size_t MaximumSize>
+class GrowingLinearAllocator
+{
+private:
+	void* virtual_memory_start_;
+	void* virtual_memory_end_;
+	void* physical_memory_current_;
+	void* physical_memory_end_;
+
+public:
+	static constexpr unsigned int ALIGNMENT = { 1 };
+
+	GrowingLinearAllocator() :
+		virtual_memory_start_{ virtual_memory::ReserveAddressSpace(MaximumSize) },
+		virtual_memory_end_{ virtual_memory_start_ + MaximumSize },
+		physical_memory_current_{ virtual_memory_start_ },
+		physical_memory_end_{ virtual_memory_start_ }
+	{}
+
+	//This is useful for debugging - can try and allocate in the same spot every time.
+	GrowingLinearAllocator(void* location) :
+		virtual_memory_start_{ virtual_memory::ReserveAddressSpace(MaximumSize, location) },
+		virtual_memory_end_{ virtual_memory_start_ + MaximumSize },
+		physical_memory_current_{ virtual_memory_start_ },
+		physical_memory_end_{ virtual_memory_start_ }
+	{}
+
+	~GrowingLinearAllocator()
+	{
+		virtual_memory::ReleaseAddressSpace(virtual_memory_start_);
+	}
+
+
+	inline MemoryBlock Allocate(size_t size)
+	{
+		//TODO: Worry about alignment stuff maybe.
+		if (physical_memory_current_ + size > physical_memory_end_) {
+			//Allocate a new page. 
+
+			if (physical_memory_end_ + virtual_memory::PAGE_SIZE > virtual_memory_end_) {
+				return MemoryBlock{ nullptr, 0 };
+			}
+
+			virtual_memory::AllocatePhysicalMemory(physical_memory_end_, virtual_memory::PAGE_SIZE);
+			physical_memory_end_ += virtual_memory::PAGE_SIZE;
+		}
+		MemoryBlock result{ physical_memory_current_, size };
+		physical_memory_current_ += size;
+		return result;
+	}
+
+	inline void Reallocate(MemoryBlock&, size_t)
+	{
+		//TODO:
+	}
+
+	inline void Deallocate(MemoryBlock)
+	{
+		//TODO:
+	}
+
+	inline void DeallocateAll()
+	{
+		virtual_memory::DeallocatePhysicalMemory(virtual_memory_start_, physical_memory_current_ - virtual_memory_start_);
+		physical_memory_current_ = virtual_memory_start_;
+	}
+
+	inline bool Owns(MemoryBlock b)
+	{
+		return b.ptr > physical_memory_start_ && b.ptr < physical_memory_end_;
+	}
+};
+
+
+
+/*
+Virtual memory:
+Here is a simple wrapper for some virtual memory functionality that I will eventually want to make cross-platform.
+*/
+
+namespace virtual_memory
+{
+static constexpr size_t PAGE_SIZE{ 4096 };
+
+void* ReserveAddressSpace(size_t size, void* location = nullptr);
+void* AllocatePhysicalMemory(void* location, size_t size);
+void ReleaseAddressSpace(void* location);
+void DeallocatePhysicalMemory(void* ptr, size_t size);
+}
+
 
 }//end namespace rkg
