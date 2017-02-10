@@ -1,4 +1,7 @@
 #include "GuiBasics.h"
+#include "Renderer/Renderer.h"
+#include "Renderer/RenderInterface.h"
+
 #ifdef _WIN32
 #define GLFW_EXPOSE_NATIVE_WIN32
 #define GLFW_EXPOSE_NATIVE_WGL
@@ -6,9 +9,9 @@
 
 #pragma comment(lib, "glfw3.lib")
 #endif
+#include "../External/GLFW/glfw3.h"
 #include "../External/GLFW/glfw3native.h"
 #include "../External/imgui/imgui.h"
-#include "../Renderer/Renderer.h"
 
 using namespace rkg;
 
@@ -17,40 +20,15 @@ namespace {
 		GLFWwindow* window;
 		double time;		
 		uint8_t layer;
-		render::UniformHandle projection_matrix;
-		render::UniformHandle font_sampler;
-		render::ProgramHandle program;
-		render::DynamicIndexBufferHandle index_buffer;
-		render::DynamicVertexBufferHandle vertex_buffer;
 		float mouse_wheel;
 		bool mouse_pressed[3];
 	} gui;
 
 	void Render(ImDrawData* draw_data)
 	{
-		using namespace render;
-		constexpr uint64_t raster_state = 0 |
-			RenderState::BLEND_EQUATION_ADD |
-			RenderState::BLEND_ONE_MINUS_SRC_ALPHA |
-			RenderState::CULL_OFF |
-			RenderState::DEPTH_TEST_OFF;
-
 		ImGuiIO& io = ImGui::GetIO();
 		float fb_height = io.DisplaySize.y * io.DisplayFramebufferScale.y;
 		draw_data->ScaleClipRects(io.DisplayFramebufferScale);
-		//Todo: set GL viewport with screen size/viewport
-
-		const float ortho_projection[4][4] =
-		{
-			{ 2.0 / io.DisplaySize.x, 0.0f, 0.0f, 0.0f },
-			{ 0.0f, 2.0f / -io.DisplaySize.y, 0.0f, 0.0f },
-			{ 0.0f, 0.0f, -1.0f, 0.0f },
-			{ -1.0f, 1.0f, 0.0f, 1.0f },
-		};
-
-		render::SetUniform(gui.projection_matrix, ortho_projection);
-
-		SetState(raster_state);
 
 		auto vert_buffer_size = 0u;
 		auto index_buffer_size = 0u;
@@ -65,8 +43,8 @@ namespace {
 		vert_buffer_size *= sizeof(ImDrawVert);
 		index_buffer_size *= sizeof(ImDrawIdx);
 
-		auto vert_data = Alloc(vert_buffer_size);
-		auto index_data = Alloc(index_buffer_size);
+		auto vert_data = gl::Alloc(vert_buffer_size);
+		auto index_data = gl::Alloc(index_buffer_size);
 
 		uintptr_t vert_offset = 0;
 		uintptr_t index_offset = 0;
@@ -77,8 +55,8 @@ namespace {
 			vert_offset += cmd_list->VtxBuffer.size() * sizeof(ImDrawVert);
 			index_offset += cmd_list->IdxBuffer.size() * sizeof(ImDrawIdx);
 		}
-		UpdateDynamicVertexBuffer(gui.vertex_buffer, vert_data);
-		UpdateDynamicIndexBuffer(gui.index_buffer, index_data);
+
+		render::UpdateImguiData(vert_data, index_data, Vec2{ io.DisplaySize.x, io.DisplaySize.y });
 
 		unsigned int vtx_buffer_offset = 0;
 		unsigned int idx_buffer_offset = 0;
@@ -90,17 +68,13 @@ namespace {
 					pcmd->UserCallback(cmd_list, pcmd);
 				}
 				else {
-					SetState(raster_state);
-					SetTexture(TextureHandle{ (uint32_t)pcmd->TextureId }, gui.font_sampler, 0);
-					SetScissor(pcmd->ClipRect.x,
-						(fb_height - pcmd->ClipRect.w),
-						(pcmd->ClipRect.z - pcmd->ClipRect.x),
-						(pcmd->ClipRect.w - pcmd->ClipRect.y));
-					//SetVertexBuffer(gui.vertex_buffer, vtx_buffer_offset);
-					//SetIndexBuffer(gui.index_buffer, idx_buffer_offset, pcmd->ElemCount);
-					SetVertexBuffer(gui.vertex_buffer, vtx_buffer_offset);
-					SetIndexBuffer(gui.index_buffer, idx_buffer_offset, pcmd->ElemCount);
-					Submit(gui.layer, gui.program, 0, false);
+					render::DrawImguiCmd(vtx_buffer_offset,
+										 idx_buffer_offset,
+										 pcmd->ElemCount,
+										 pcmd->ClipRect.x,
+										 (fb_height - pcmd->ClipRect.w),
+										 (pcmd->ClipRect.z - pcmd->ClipRect.x),
+										 (pcmd->ClipRect.w - pcmd->ClipRect.y));
 				}
 				idx_buffer_offset += pcmd->ElemCount;
 			}
@@ -157,57 +131,14 @@ void rkg::InitializeImgui(GLFWwindow* window)
 	int width, height, bpp;
 	io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height, &bpp);
 
-	auto block = render::AllocAndCopy(pixels, width*height*bpp);
+	auto block = gl::AllocAndCopy(pixels, width*height*bpp);
 
-	auto font_texture = render::CreateTexture2D(width, height, render::TextureFormat::RGBA8, block);
-	io.Fonts->SetTexID((void*)font_texture.index);
+	//io.Fonts->SetTexID();
 	io.Fonts->ClearInputData();
 	io.Fonts->ClearTexData();
 
 	//Set up other rendering stuff
-	const char vertex_shader[] =
-		"#version 330\n"
-		"uniform mat4 ProjMtx;\n"
-		"in vec2 Position;\n"
-		"in vec2 UV;\n"
-		"in vec4 Color;\n"
-		"out vec2 Frag_UV;\n"
-		"out vec4 Frag_Color;\n"
-		"void main()\n"
-		"{\n"
-		"	Frag_UV = UV;\n"
-		"	Frag_Color = Color;\n"
-		"	gl_Position = ProjMtx * vec4(Position.xy,0,1);\n"
-		"}\n";
-
-	const char fragment_shader[] =
-		"#version 330\n"
-		"uniform sampler2D Texture;\n"
-		"in vec2 Frag_UV;\n"
-		"in vec4 Frag_Color;\n"
-		"out vec4 Out_Color;\n"
-		"void main()\n"
-		"{\n"
-		"	Out_Color = Frag_Color * texture( Texture, Frag_UV.st);\n"
-		"}\n";
-
-	auto vert_block = render::AllocAndCopy(vertex_shader, sizeof(vertex_shader));
-	auto frag_block = render::AllocAndCopy(fragment_shader, sizeof(fragment_shader));
-	gui.program = render::CreateProgram(vert_block, frag_block);
-
-	//TODO: Have to save all these handles somewhere, especially for cleanup.
-	gui.font_sampler = render::CreateUniform("Texture", render::UniformType::Sampler);
-	gui.projection_matrix = render::CreateUniform("ProjMtx", render::UniformType::Mat4);
-
-	render::VertexLayout vert_layout;
-	vert_layout.Add("Position", 2, render::VertexLayout::AttributeType::Float32)
-		.Add("UV", 2, render::VertexLayout::AttributeType::Float32)
-		.Add("Color", 4, render::VertexLayout::AttributeType::Uint8, true);
-
-	gui.vertex_buffer = render::CreateDynamicVertexBuffer(vert_layout);
-	gui.index_buffer = render::CreateDynamicIndexBuffer(render::IndexType::UShort);
-
-	gui.layer = 1;
+	render::InitImguiRendering(block, width, height);
 }
 
 void rkg::ImguiNewFrame()

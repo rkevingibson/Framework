@@ -16,7 +16,7 @@
 #include "GLLite.h"
 
 using namespace rkg;
-using namespace render;
+using namespace gl;
 
 
 namespace
@@ -603,7 +603,7 @@ void FreeMemory()
 
 }
 
-const MemoryBlock* render::Alloc(const uint32_t size)
+const MemoryBlock* gl::Alloc(const uint32_t size)
 {
 	auto block = renderer_allocator.Allocate(size + sizeof(MemoryBlock));
 	auto result = reinterpret_cast<MemoryBlock*>(block.ptr);
@@ -612,14 +612,14 @@ const MemoryBlock* render::Alloc(const uint32_t size)
 	return result;
 }
 
-const MemoryBlock* render::AllocAndCopy(const void * const data, const uint32_t size)
+const MemoryBlock* gl::AllocAndCopy(const void * const data, const uint32_t size)
 {
 	auto block = Alloc(size);
 	memcpy(block->ptr, data, size);
 	return block;
 }
 
-const MemoryBlock* render::MakeRef(const void* data, const uint32_t size, ReleaseFunction fn, void* user_data)
+const MemoryBlock* gl::MakeRef(const void* data, const uint32_t size, ReleaseFunction fn, void* user_data)
 {
 	auto block = renderer_allocator.Allocate(sizeof(MemoryRef));
 	auto ref = reinterpret_cast<MemoryRef*>(block.ptr);
@@ -630,7 +630,7 @@ const MemoryBlock* render::MakeRef(const void* data, const uint32_t size, Releas
 	return &ref->block;
 }
 
-const MemoryBlock* render::LoadShaderFile(const char* file)
+const MemoryBlock* gl::LoadShaderFile(const char* file)
 {
 	using namespace std;
 	FILE* f;
@@ -787,7 +787,7 @@ void GLAPI GLErrorCallback(GLenum source, GLenum type, GLuint id, GLenum severit
 #pragma endregion
 
 
-void render::SetErrorCallback(ErrorCallbackFn f)
+void gl::SetErrorCallback(ErrorCallbackFn f)
 {
 	error_callback = f;
 }
@@ -808,13 +808,6 @@ void render::SetErrorCallback(ErrorCallbackFn f)
 //}
 //}
 
-void render::Resize(int w, int h)
-{
-	//ResizeCmd cmd;
-	//cmd.w = w;
-	//cmd.h = h;
-	//pre_buffer.Push(cmd);
-}
 
 
 
@@ -874,7 +867,7 @@ UniformType UniformTypeFromEnum(GLenum e)
 }
 }
 
-ProgramHandle render::CreateProgram(const MemoryBlock* vertex_shader, const MemoryBlock* frag_shader)
+ProgramHandle gl::CreateProgram(const MemoryBlock* vertex_shader, const MemoryBlock* frag_shader)
 {
 	auto program_handle = programs.Create();
 	
@@ -958,7 +951,7 @@ ProgramHandle render::CreateProgram(const MemoryBlock* vertex_shader, const Memo
 	return ProgramHandle{ program_handle.index };
 }
 
-ProgramHandle render::CreateComputeProgram(const MemoryBlock * compute_shader)
+ProgramHandle gl::CreateComputeProgram(const MemoryBlock * compute_shader)
 {
 	auto program_handle = programs.Create();
 
@@ -1026,12 +1019,12 @@ ProgramHandle render::CreateComputeProgram(const MemoryBlock * compute_shader)
 	return ProgramHandle{ program_handle.index };
 }
 
-unsigned int render::GetNumUniforms(ProgramHandle h)
+unsigned int gl::GetNumUniforms(ProgramHandle h)
 {
 	return programs[h.index].num_uniforms;
 }
 
-int render::GetProgramUniforms(ProgramHandle h, UniformHandle* buffer, int size)
+int gl::GetProgramUniforms(ProgramHandle h, UniformHandle* buffer, int size)
 {
 	memcpy_s(buffer,
 			 size * sizeof(UniformHandle),
@@ -1040,7 +1033,7 @@ int render::GetProgramUniforms(ProgramHandle h, UniformHandle* buffer, int size)
 	return programs[h.index].num_uniforms;
 }
 
-void render::GetUniformInfo(UniformHandle h, char* name, int name_size, UniformType* type)
+void gl::GetUniformInfo(UniformHandle h, char* name, int name_size, UniformType* type)
 {
 	//Get the name and type
 #ifdef RENDER_DEBUG
@@ -1055,7 +1048,7 @@ void render::GetUniformInfo(UniformHandle h, char* name, int name_size, UniformT
 
 #pragma region Vertex Buffer Functions
 
-VertexBufferHandle render::CreateVertexBuffer(const MemoryBlock* data, const VertexLayout& layout)
+VertexBufferHandle gl::CreateVertexBuffer(const MemoryBlock* data, const VertexLayout& layout)
 {
 	GLuint buffer;
 	glGenBuffers(1, &buffer);
@@ -1087,18 +1080,18 @@ GLuint CreateBuffer(const MemoryBlock* block, GLenum target, GLenum usage)
 
 }
 
-DynamicVertexBufferHandle render::CreateDynamicVertexBuffer(const MemoryBlock* data, const VertexLayout& layout)
+VertexBufferHandle gl::CreateDynamicVertexBuffer(const MemoryBlock* data, const VertexLayout& layout)
 {
 	auto vb = vertex_buffers.Create();
-	DynamicVertexBufferHandle result{ vb.index };
+	VertexBufferHandle result{ vb.index };
 
 	vb.obj->layout = layout;
-	vb.obj->size = data->length;
+	vb.obj->size = (data) ? data->length : 0;
 	vb.obj->buffer = CreateBuffer(data, GL_ARRAY_BUFFER, GL_DYNAMIC_DRAW);
 	return result;
 }
 
-DynamicVertexBufferHandle render::CreateDynamicVertexBuffer(const VertexLayout& layout)
+VertexBufferHandle gl::CreateDynamicVertexBuffer(const VertexLayout& layout)
 {
 	return CreateDynamicVertexBuffer(nullptr, layout);
 }
@@ -1118,7 +1111,7 @@ void UpdateDynamicBuffer(GLenum target, GLuint buffer, const MemoryBlock* block,
 }
 }
 
-void render::UpdateDynamicVertexBuffer(DynamicVertexBufferHandle handle, const MemoryBlock* data, const ptrdiff_t offset)
+void gl::UpdateDynamicVertexBuffer(VertexBufferHandle handle, const MemoryBlock* data, const ptrdiff_t offset)
 {
 	auto& vb = vertex_buffers[handle.index];
 	UpdateDynamicBuffer(GL_ARRAY_BUFFER, vb.buffer, data, &vb.size);
@@ -1169,19 +1162,19 @@ namespace
 	}
 }
 
-IndexBufferHandle render::CreateIndexBuffer(const MemoryBlock* data, IndexType type)
+IndexBufferHandle gl::CreateIndexBuffer(const MemoryBlock* data, IndexType type)
 {
 	IndexBufferHandle result{ CreateElementBuffer(GL_STATIC_DRAW, type, data) };
 	return result;
 }
 
-DynamicIndexBufferHandle render::CreateDynamicIndexBuffer(const MemoryBlock* data, IndexType type)
+IndexBufferHandle gl::CreateDynamicIndexBuffer(const MemoryBlock* data, IndexType type)
 {
-	DynamicIndexBufferHandle result{ CreateElementBuffer(GL_DYNAMIC_DRAW, type, data) };
+	IndexBufferHandle result{ CreateElementBuffer(GL_DYNAMIC_DRAW, type, data) };
 	return result;
 }
 
-DynamicIndexBufferHandle render::CreateDynamicIndexBuffer(IndexType type)
+IndexBufferHandle gl::CreateDynamicIndexBuffer(IndexType type)
 {
 	return CreateDynamicIndexBuffer(nullptr, type);
 }
@@ -1225,7 +1218,7 @@ void UpdateDynamicIndexBuffer(IndexBuffer* ib, const MemoryBlock* block)
 
 }
 
-void render::UpdateDynamicIndexBuffer(DynamicIndexBufferHandle handle, const MemoryBlock* data, const ptrdiff_t offset)
+void gl::UpdateDynamicIndexBuffer(IndexBufferHandle handle, const MemoryBlock* data, const ptrdiff_t offset)
 {
 	UpdateDynamicIndexBuffer(&index_buffers[handle.index], data);
 }
@@ -1234,7 +1227,7 @@ void render::UpdateDynamicIndexBuffer(DynamicIndexBufferHandle handle, const Mem
 
 #pragma region SSBO Functions
 
-SSBOHandle render::CreateShaderStorageBuffer(const MemoryBlock* data)
+SSBOHandle gl::CreateShaderStorageBuffer(const MemoryBlock* data)
 {
 	auto ssbo = shader_storage_buffers.Create();
 	SSBOHandle result{ ssbo.index };
@@ -1243,13 +1236,13 @@ SSBOHandle render::CreateShaderStorageBuffer(const MemoryBlock* data)
 	return result;
 }
 
-void render::UpdateShaderStorageBuffer(SSBOHandle handle, const MemoryBlock* data)
+void gl::UpdateShaderStorageBuffer(SSBOHandle handle, const MemoryBlock* data)
 {
 	auto& ssbo = shader_storage_buffers[handle.index];
 	UpdateDynamicBuffer(GL_SHADER_STORAGE_BUFFER, ssbo.buffer, data, &ssbo.size);
 }
 
-AtomicCounterBufferHandle render::CreateAtomicCounterBuffer(const MemoryBlock * data)
+AtomicCounterBufferHandle gl::CreateAtomicCounterBuffer(const MemoryBlock * data)
 {
 	auto atomic_buffer = atomic_counter_buffers.Create();
 
@@ -1260,7 +1253,7 @@ AtomicCounterBufferHandle render::CreateAtomicCounterBuffer(const MemoryBlock * 
 	return result;
 }
 
-void render::UpdateAtomicCounterBuffer(AtomicCounterBufferHandle h, const MemoryBlock* data)
+void gl::UpdateAtomicCounterBuffer(AtomicCounterBufferHandle h, const MemoryBlock* data)
 {
 	auto& atomic_buffer = atomic_counter_buffers[h.index];
 	UpdateDynamicBuffer(GL_ATOMIC_COUNTER_BUFFER, atomic_buffer.buffer, data, &atomic_buffer.size);
@@ -1277,12 +1270,12 @@ void GetTextureFormats(TextureFormat f, GLenum* internal_format, GLenum* format,
 	ASSERT(internal_format != nullptr && format != nullptr && type != nullptr);
 
 	switch (f) {
-	case render::TextureFormat::RGB8:
+	case gl::TextureFormat::RGB8:
 		*internal_format = GL_RGB8;
 		*format = GL_RGB;
 		*type = GL_UNSIGNED_BYTE;
 		break;
-	case render::TextureFormat::RGBA8:
+	case gl::TextureFormat::RGBA8:
 		*internal_format = GL_RGBA8;
 		*format = GL_RGBA;
 		*type = GL_UNSIGNED_BYTE;
@@ -1327,7 +1320,7 @@ uint32_t CreateTexture(GLenum target, TextureFormat format, uint16_t w, uint16_t
 
 }
 
-TextureHandle render::CreateTexture2D(uint16_t width, uint16_t height, TextureFormat format, const MemoryBlock* data)
+TextureHandle gl::CreateTexture2D(uint16_t width, uint16_t height, TextureFormat format, const MemoryBlock* data)
 {
 	return TextureHandle{ CreateTexture(GL_TEXTURE_2D, format, width, height, data) };
 }
@@ -1346,7 +1339,7 @@ void UpdateTexture(Texture* texture, GLenum target, const MemoryBlock* block)
 }
 }
 
-void render::UpdateTexture2D(TextureHandle handle, const MemoryBlock* data)
+void gl::UpdateTexture2D(TextureHandle handle, const MemoryBlock* data)
 {
 	UpdateTexture(&textures[handle.index], GL_TEXTURE_2D, data);
 }
@@ -1354,7 +1347,7 @@ void render::UpdateTexture2D(TextureHandle handle, const MemoryBlock* data)
 
 #pragma region Uniforms
 
-UniformHandle render::CreateUniform(const char * name, UniformType type)
+UniformHandle gl::CreateUniform(const char * name, UniformType type)
 {
 	auto uniform = uniforms.Create();
 	UniformHandle result{ uniform.index };
@@ -1368,7 +1361,7 @@ UniformHandle render::CreateUniform(const char * name, UniformType type)
 	return result;
 }
 
-void render::SetUniform(UniformHandle handle, const void* data, int num)
+void gl::SetUniform(UniformHandle handle, const void* data, int num)
 {
 	auto type = uniforms[handle.index].type;
 	uniform_buffer.Add(handle, type, num, data);
@@ -1378,104 +1371,79 @@ void render::SetUniform(UniformHandle handle, const void* data, int num)
 
 #pragma region Destroy Functions
 
-void render::Destroy(ProgramHandle h)
+void gl::Destroy(ProgramHandle h)
 {
 	//NOTE: Do I want to destroy all the uniforms associated with this program? Probably by default yes.
 	for (int i = 0; i < programs[h.index].num_uniforms; i++) {
-		render::Destroy(programs[h.index].uniform_handles[i]);
+		gl::Destroy(programs[h.index].uniform_handles[i]);
 	}
 
 	glDeleteProgram(programs[h.index].id);
 	programs.Remove(h.index);
 }
 
-void render::Destroy(VertexBufferHandle h)
+void gl::Destroy(VertexBufferHandle h)
 {
 	glDeleteBuffers(1, &vertex_buffers[h.index].buffer);
 	vertex_buffers.Remove(h.index);
 }
 
-void render::Destroy(DynamicVertexBufferHandle h)
-{
-	glDeleteBuffers(1, &vertex_buffers[h.index].buffer);
-	vertex_buffers.Remove(h.index);
-}
 
-void	render::Destroy(IndexBufferHandle h)
+void	gl::Destroy(IndexBufferHandle h)
 {
 	glDeleteBuffers(1, &index_buffers[h.index].buffer);
 	index_buffers.Remove(h.index);
 }
 
-void	render::Destroy(DynamicIndexBufferHandle h)
-{
-	glDeleteBuffers(1, &index_buffers[h.index].buffer);
-	index_buffers.Remove(h.index);
-}
-
-void	render::Destroy(TextureHandle h)
+void	gl::Destroy(TextureHandle h)
 {
 
 }
 
-void render::Destroy(UniformHandle h)
+void gl::Destroy(UniformHandle h)
 {
 	uniforms.Remove(h.index);
 }
 
 #pragma endregion
 
-void render::SetState(uint64_t flags)
+void gl::SetState(uint64_t flags)
 {
 	current_draw.render_state = flags;
 }
 
-void render::SetVertexBuffer(VertexBufferHandle h, uint32_t first_vertex, uint32_t num_verts)
+void gl::SetVertexBuffer(VertexBufferHandle h, uint32_t first_vertex, uint32_t num_verts)
 {
 	current_draw.vertex_buffer = h.index;
 	current_draw.vertex_offset = first_vertex;
 	current_draw.vertex_count = num_verts;
 }
 
-void render::SetVertexBuffer(DynamicVertexBufferHandle h, uint32_t first_vertex, uint32_t num_verts)
-{
-	current_draw.vertex_buffer = h.index;
-	current_draw.vertex_offset = first_vertex;
-	current_draw.vertex_count = num_verts;
-}
-
-void render::SetIndexBuffer(IndexBufferHandle h, uint32_t offset, uint32_t num_elements)
+void gl::SetIndexBuffer(IndexBufferHandle h, uint32_t offset, uint32_t num_elements)
 {
 	current_draw.index_buffer = h.index;
 	current_draw.index_offset = offset;
 	current_draw.index_count = num_elements;
 }
 
-void render::SetIndexBuffer(DynamicIndexBufferHandle h, uint32_t offset, uint32_t num_elements)
-{
-	current_draw.index_buffer = h.index;
-	current_draw.index_offset = offset;
-	current_draw.index_count = num_elements;
-}
-
-void render::SetTexture(TextureHandle tex, UniformHandle sampler, uint16_t texture_unit)
+void gl::SetTexture(TextureHandle tex, UniformHandle sampler, uint16_t texture_unit)
 {
 	GLint unit = texture_unit;
 	SetUniform(sampler, &unit);
 	current_rendercmd.textures[texture_unit] = tex;
 }
 
-void render::SetShaderStorageBuffer(SSBOHandle h, uint32_t binding)
+void gl::SetShaderStorageBuffer(SSBOHandle h, uint32_t binding)
 {
 	current_rendercmd.ssbos[binding] = shader_storage_buffers[h.index].buffer;
 }
 
-void render::SetAtomicCounterBuffer(AtomicCounterBufferHandle h, uint32_t binding)
+void gl::SetAtomicCounterBuffer(AtomicCounterBufferHandle h, uint32_t binding)
 {
 	current_rendercmd.atomic_counters[binding] = atomic_counter_buffers[h.index].buffer;
 }
 
-void render::SetScissor(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
+void gl::SetScissor(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
 {
 	current_draw.scissor[0] = x;
 	current_draw.scissor[1] = y;
@@ -1483,7 +1451,7 @@ void render::SetScissor(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
 	current_draw.scissor[3] = h;
 }
 
-void render::Submit(uint8_t layer, ProgramHandle program, uint32_t depth, bool preserve_state)
+void gl::Submit(uint8_t layer, ProgramHandle program, uint32_t depth, bool preserve_state)
 {
 	//Create a sort key for this draw call
 	Key key;
@@ -1514,7 +1482,7 @@ void render::Submit(uint8_t layer, ProgramHandle program, uint32_t depth, bool p
 	current_rendercmd.uniform_start = uniform_end;
 }
 
-void render::SubmitCompute(uint8_t layer, ProgramHandle program, uint16_t num_x, uint16_t num_y, uint16_t num_z)
+void gl::SubmitCompute(uint8_t layer, ProgramHandle program, uint16_t num_x, uint16_t num_y, uint16_t num_z)
 {
 	Key key;
 	key.layer = layer;
@@ -1553,9 +1521,12 @@ namespace
 
 GLFWwindow* current_window = nullptr;
 
-void Render()
+}
+
+void gl::Render()
 {
 	//Do any pre-render stuff wrt resources that need management.
+	frame++;
 	SortKeys();
 
 	//Need to store the current state of the important stuff
@@ -1831,13 +1802,12 @@ void Render()
 	compute_buffer_count = 0;
 	uniform_buffer.Clear();
 	FreeMemory();
-}
+	current_rendercmd.uniform_start = 0;
+	
 }
 
-void render::Initialize(GLFWwindow* window)
+void gl::InitializeBackend(GLFWwindow* window)
 {
-	glfwMakeContextCurrent(nullptr);
-
 	glfwMakeContextCurrent(window);
 	current_window = window;
 	LoadGLFunctions();
@@ -1856,12 +1826,4 @@ void render::Initialize(GLFWwindow* window)
 	glEnable(GL_CULL_FACE);
 	glCullFace(GL_BACK);
 	return;
-}
-
-void render::EndFrame()
-{
-	frame++;
-	Render();
-	current_rendercmd.uniform_start = 0;
-	glfwSwapBuffers(current_window);
 }

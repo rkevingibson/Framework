@@ -1,12 +1,8 @@
 #pragma once
 
-#include <vector>
-
-#include "Renderer.h"
 #include "Utilities/Geometry.h"
-#include <memory>
-
-
+#include "External/GLFW/glfw3.h"
+#include "Utilities/Allocators.h"
 
 namespace rkg
 {
@@ -28,11 +24,25 @@ struct MeshObject : public RenderSystemObject
 
 };
 
+void Initialize(GLFWwindow* window);
+void ResizeWindow(int w, int h);
 
 void Create(MeshObject *mesh_object);
+//void UpdateMeshData(RenderHandle mesh, const MemoryBlock* vertex_data, const MemoryBlock* index_data);
 
 
-void RenderLoop();
+void EndFrame();
+
+//
+//IMGUI FUNCTIONS
+//
+
+void InitImguiRendering(const MemoryBlock* font_data, int width, int height);
+void UpdateImguiData(const MemoryBlock* vertex_data, const MemoryBlock* index_data, const Vec2& display_size);
+void DrawImguiCmd(uint32_t vertex_offset, uint32_t index_offset, uint32_t index_count, uint32_t scissor_x, uint32_t scissor_y, uint32_t scissor_w, uint32_t scissor_h);
+
+
+
 
 }
 }

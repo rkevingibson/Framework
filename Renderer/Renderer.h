@@ -14,12 +14,11 @@
 #include "../Utilities/Utilities.h"
 /*Enables some debug information - less efficient, stores some strings it otherwise wouldn't keep.*/
 #define RENDER_DEBUG
-
 struct GLFWwindow;
 
 namespace rkg
 {
-namespace render
+namespace gl
 {
 
 #define RENDER_HANDLE(name)\
@@ -29,8 +28,6 @@ RENDER_HANDLE(VertexBufferHandle);
 RENDER_HANDLE(IndexBufferHandle);
 RENDER_HANDLE(ProgramHandle);
 RENDER_HANDLE(UniformHandle);
-RENDER_HANDLE(DynamicVertexBufferHandle);
-RENDER_HANDLE(DynamicIndexBufferHandle);
 RENDER_HANDLE(AtomicCounterBufferHandle);
 RENDER_HANDLE(SSBOHandle);
 RENDER_HANDLE(TextureHandle);
@@ -214,7 +211,7 @@ struct VertexLayout
 
 using ErrorCallbackFn = void(*)(const char* msg);
 
-void Initialize(GLFWwindow* window);
+void InitializeBackend(GLFWwindow* window);
 void SetErrorCallback(ErrorCallbackFn f);
 void Resize(int w, int h);
 
@@ -246,17 +243,17 @@ void	GetUniformInfo(UniformHandle h, char* name, int name_size, UniformType* typ
 
 #pragma region Vertex Buffer Functions
 VertexBufferHandle	CreateVertexBuffer(const MemoryBlock* data, const VertexLayout& layout);
-DynamicVertexBufferHandle	CreateDynamicVertexBuffer(const MemoryBlock* data, const VertexLayout& layout);
-DynamicVertexBufferHandle	CreateDynamicVertexBuffer(const VertexLayout& layout);
-void	UpdateDynamicVertexBuffer(DynamicVertexBufferHandle handle, const MemoryBlock* data, const ptrdiff_t offset = 0);
+VertexBufferHandle	CreateDynamicVertexBuffer(const MemoryBlock* data, const VertexLayout& layout);
+VertexBufferHandle	CreateDynamicVertexBuffer(const VertexLayout& layout);
+void	UpdateDynamicVertexBuffer(VertexBufferHandle handle, const MemoryBlock* data, const ptrdiff_t offset = 0);
 
 #pragma endregion
 
 #pragma region Index Buffer Functions
 IndexBufferHandle	CreateIndexBuffer(const MemoryBlock* data, IndexType type);
-DynamicIndexBufferHandle	CreateDynamicIndexBuffer(const MemoryBlock* data, IndexType type);
-DynamicIndexBufferHandle	CreateDynamicIndexBuffer(IndexType type);
-void	UpdateDynamicIndexBuffer(DynamicIndexBufferHandle handle, const MemoryBlock* data, const ptrdiff_t offset = 0);
+IndexBufferHandle	CreateDynamicIndexBuffer(const MemoryBlock* data, IndexType type);
+IndexBufferHandle	CreateDynamicIndexBuffer(IndexType type);
+void	UpdateDynamicIndexBuffer(IndexBufferHandle handle, const MemoryBlock* data, const ptrdiff_t offset = 0);
 #pragma endregion
 
 #pragma region Misc Buffer Functions
@@ -283,9 +280,7 @@ void SetUniform(UniformHandle handle, const void* data, int num = 1);
 //TODO: Right now these don't do anything.
 void	Destroy(ProgramHandle);
 void	Destroy(VertexBufferHandle);
-void	Destroy(DynamicVertexBufferHandle);
 void	Destroy(IndexBufferHandle);
-void	Destroy(DynamicIndexBufferHandle);
 void	Destroy(TextureHandle);
 void	Destroy(UniformHandle);
 //TODO: None of these are implemented yet. 
@@ -294,9 +289,8 @@ void	Destroy(UniformHandle);
 void SetState(uint64_t flags);
 
 void SetVertexBuffer(VertexBufferHandle h, uint32_t first_vertex = 0, uint32_t num_verts = UINT32_MAX);
-void SetVertexBuffer(DynamicVertexBufferHandle h, uint32_t first_vertex = 0, uint32_t num_verts = UINT32_MAX);
 void SetIndexBuffer(IndexBufferHandle h, uint32_t first_element = 0, uint32_t num_elements = UINT32_MAX);
-void SetIndexBuffer(DynamicIndexBufferHandle h, uint32_t first_element = 0, uint32_t num_elements = UINT32_MAX);
+
 void SetTexture(TextureHandle tex, UniformHandle sampler, uint16_t texture_unit);
 void SetShaderStorageBuffer(SSBOHandle h, uint32_t binding);
 void SetAtomicCounterBuffer(AtomicCounterBufferHandle h, uint32_t binding);
@@ -306,8 +300,7 @@ void SetScissor(uint32_t x, uint32_t y, uint32_t w, uint32_t h);
 void Submit(uint8_t layer, ProgramHandle program, uint32_t depth = 0, bool preserve_state = false);
 void SubmitCompute(uint8_t layer, ProgramHandle program, uint16_t num_x = 1, uint16_t num_y = 1, uint16_t num_z = 1);
 
-void EndFrame();//Submit frame to render thread.
-//void Render();//Submit the frame to the renderer.
+void Render();//Submit the frame to the renderer.
 
 
 }//End namespace render

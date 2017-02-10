@@ -220,8 +220,8 @@ public:
 template<size_t threshold, class SmallAllocator, class LargeAllocator>
 class Segregator
 {
-	SmallAllocator small;
-	LargeAllocator large;
+	SmallAllocator small_allocator;
+	LargeAllocator large_allocator;
 
 public:
 	static constexpr unsigned int ALIGNMENT = Min(SmallAllocator::ALIGNMENT, LargeAllocator::ALIGNMENT);
@@ -229,32 +229,32 @@ public:
 	MemoryBlock Allocate(size_t n)
 	{
 		if (n <= threshold) {
-			return small.Allocate(n);
+			return small_allocator.Allocate(n);
 		}
-		return large.Allocate(n);
+		return large_allocator.Allocate(n);
 	}
 
 	void Reallocate(MemoryBlock& b, size_t new_size)
 	{
 		if (b.length < threshold) {
 			if (new_size > threshold) {
-				auto new_block = large.Allocate(new_size);
+				auto new_block = large_allocator.Allocate(new_size);
 				if (new_block.ptr) {
-					small.Deallocate(b);
+					small_allocator.Deallocate(b);
 					b = new_block;
 				}
 			} else {
-				small.Reallocate(b, new_size);
+				small_allocator.Reallocate(b, new_size);
 			}
 		} else {
 			if (new_size < threshold) {
-				auto new_block = small.Allocate(new_size);
+				auto new_block = small_allocator.Allocate(new_size);
 				if (new_block.ptr) {
-					large.Deallocate(b);
+					large_allocator.Deallocate(b);
 					b = new_block;
 				}
 			} else {
-				large.Reallocate(b, new_size);
+				large_allocator.Reallocate(b, new_size);
 			}
 		}
 	}
@@ -266,34 +266,34 @@ public:
 		}
 
 		if (b.length <= threshold) {
-			return small.Expand(b, delta);
+			return small_allocator.Expand(b, delta);
 		} else {
-			return large.Expand(b, delta);
+			return large_allocator.Expand(b, delta);
 		}
 	}
 
 	void Deallocate(MemoryBlock b)
 	{
 		if (b.length <= threshold) {
-			small.Deallocate(b);
+			small_allocator.Deallocate(b);
 		} else {
-			large.Deallocate(b);
+			large_allocator.Deallocate(b);
 		}
 	}
 
 	bool Owns(MemoryBlock b)
 	{
 		if (b.length <= threshold) {
-			return small.Owns(b);
+			return small_allocator.Owns(b);
 		} else {
-			return large.Owns(b);
+			return large_allocator.Owns(b);
 		}
 	}
 
 	void DeallocateAll()
 	{
-		small.DeallocateAll();
-		large.DeallocateAll();
+		small_allocator.DeallocateAll();
+		large_allocator.DeallocateAll();
 	}
 };
 
@@ -406,7 +406,7 @@ public:
 	static constexpr unsigned int ALIGNMENT = { alignof(std::max_align_t) };
 
 	GrowingLinearAllocator() :
-		virtual_memory_start_{ virtual_memory::ReserveAddressSpace(MaximumSize) },
+		virtual_memory_start_{ static_cast<char*>(virtual_memory::ReserveAddressSpace(MaximumSize)) },
 		virtual_memory_end_{ virtual_memory_start_ + MaximumSize },
 		physical_memory_current_{ virtual_memory_start_ },
 		physical_memory_end_{ virtual_memory_start_ }

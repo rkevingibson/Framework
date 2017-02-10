@@ -22,7 +22,7 @@ but is not currently thread safe at all, and probably will never be.
 
 */
 
-class CommandBuffer
+class CommandStream
 {
 private:
 	char* read_pos_{ 0 };
@@ -37,10 +37,9 @@ private:
 	LinearBuffer* write_buffer_{ &buffers_[0] };
 
 public:
-
-	inline void Execute(char* end)
+	inline void ExecuteAll()
 	{
-		while( read_pos_ < end && read_pos_ < execute_buffer_->End()) {
+		while (read_pos_ < execute_buffer_->End()) {
 			Cmd* cmd = reinterpret_cast<Cmd*>(read_pos_);
 			cmd->dispatch(cmd);
 			read_pos_ = read_pos_ + cmd->command_size;
@@ -61,7 +60,6 @@ public:
 		//There's room, copy the data. 
 		memcpy(block.ptr, &t, sizeof(T));
 		auto cmd = reinterpret_cast<Cmd*>(&block.ptr);
-		cmd->dispatch = T::DISPATCH;
 		cmd->command_size = block.length;
 		return true;
 	}
