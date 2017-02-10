@@ -239,6 +239,13 @@ void rkg::render::DrawImguiCmd(uint32_t vertex_offset, uint32_t index_offset, ui
 		uint32_t x, y, w, h;
 	} cmd;
 
+	cmd.vertex_offset = vertex_offset;
+	cmd.index_offset = index_offset;
+	cmd.index_count = index_count;
+	cmd.x = scissor_x;
+	cmd.y = scissor_y;
+	cmd.w = scissor_w;
+	cmd.h = scissor_h;
 
 	cmd.dispatch = [](Cmd* cmd) {
 		auto data = reinterpret_cast<CmdType*>(cmd);

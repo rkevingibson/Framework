@@ -59,7 +59,7 @@ public:
 		}
 		//There's room, copy the data. 
 		memcpy(block.ptr, &t, sizeof(T));
-		auto cmd = reinterpret_cast<Cmd*>(&block.ptr);
+		auto cmd = reinterpret_cast<Cmd*>(block.ptr);
 		cmd->command_size = block.length;
 		return true;
 	}

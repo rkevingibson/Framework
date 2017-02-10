@@ -469,6 +469,7 @@ public:
 	{
 		virtual_memory::DeallocatePhysicalMemory(virtual_memory_start_, static_cast<char*>(physical_memory_current_) - static_cast<char*>(virtual_memory_start_));
 		physical_memory_current_ = virtual_memory_start_;
+		physical_memory_end_ = virtual_memory_start_;
 	}
 
 	inline bool Owns(MemoryBlock b)
