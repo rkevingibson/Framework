@@ -25,7 +25,6 @@ but is not currently thread safe at all, and probably will never be.
 class CommandStream
 {
 private:
-	char* read_pos_{ 0 };
 
 	constexpr static unsigned int SIZE{ KILO(4) };
 	
@@ -39,36 +38,33 @@ private:
 public:
 	inline void ExecuteAll()
 	{
-		while (read_pos_ < execute_buffer_->End()) {
-			Cmd* cmd = reinterpret_cast<Cmd*>(read_pos_);
+		auto execute_pos_ = execute_buffer_->Begin();
+		while (execute_pos_ < execute_buffer_->End()) {
+			Cmd* cmd = reinterpret_cast<Cmd*>(execute_pos_);
 			cmd->dispatch(cmd);
-			read_pos_ = read_pos_ + cmd->command_size;
+			execute_pos_ = execute_pos_ + cmd->command_size;
 		}
 	}
 
 	template<typename T>
-	inline bool Push(const T& t)
+	inline T* Add()
 	{
 		static_assert(std::is_base_of<Cmd, T>::value, "Adding invalid command");
-		//We're strictly single-reader/singe-consumer right now.
-		//This lock makes us safe to have multiple-readers/single-consumer.
-
+	
 		auto block = write_buffer_->Allocate(sizeof(T));
 		if (block.ptr == nullptr) {
-			return false;
+			return nullptr;
 		}
-		//There's room, copy the data. 
-		memcpy(block.ptr, &t, sizeof(T));
 		auto cmd = reinterpret_cast<Cmd*>(block.ptr);
 		cmd->command_size = block.length;
-		return true;
+		return reinterpret_cast<T*>(block.ptr);
 	}
 
 	inline void SwapBuffers()
 	{
 		std::swap(execute_buffer_, write_buffer_);
 		write_buffer_->DeallocateAll();
-		read_pos_ = execute_buffer_->Begin();
+		
 	}
 };
 

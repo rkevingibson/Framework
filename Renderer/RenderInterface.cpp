@@ -78,14 +78,15 @@ void render::ResizeWindow(int w, int h)
 	struct CmdType : Cmd
 	{
 		int w, h;
-	} cmd;
-	cmd.w = w;
-	cmd.h = h;
-	cmd.dispatch = [](Cmd* cmd) {
+	};
+	auto cmd = render_commands.Add<CmdType>();
+	cmd->w = w;
+	cmd->h = h;
+	cmd->dispatch = [](Cmd* cmd) {
 		auto data = reinterpret_cast<CmdType*>(cmd);
 		glViewport(0, 0, data->w, data->h);
 	};
-	render_commands.Push(cmd);
+	
 }
 
 void render::Create(render::MeshObject* mesh_object)
@@ -157,11 +158,13 @@ void render::InitImguiRendering(const MemoryBlock* font_data, int width, int hei
 		const MemoryBlock* font_data;
 		int width, height;
 
-	} cmd;
-	cmd.font_data = font_data;
-	cmd.width = width;
-	cmd.height = height;
-	cmd.dispatch = [](Cmd* cmd) {
+	};
+
+	auto cmd = render_commands.Add<CmdType>();
+	cmd->font_data = font_data;
+	cmd->width = width;
+	cmd->height = height;
+	cmd->dispatch = [](Cmd* cmd) {
 		const char vertex_shader[] =
 			"#version 330\n"
 			"uniform mat4 ProjMtx;\n"
@@ -207,7 +210,7 @@ void render::InitImguiRendering(const MemoryBlock* font_data, int width, int hei
 		imgui.index_buffer = gl::CreateDynamicIndexBuffer(gl::IndexType::UShort);
 	};
 
-	render_commands.Push(cmd);
+	
 }
 
 void render::UpdateImguiData(const MemoryBlock* vertex_data, const MemoryBlock* index_data, const Vec2& size)
@@ -217,37 +220,38 @@ void render::UpdateImguiData(const MemoryBlock* vertex_data, const MemoryBlock* 
 		const MemoryBlock* vert_data;
 		const MemoryBlock* index_data;
 		Vec2 display_size;
-	} cmd;
-	cmd.vert_data = vertex_data;
-	cmd.index_data = index_data;
-	cmd.display_size = size;
-	cmd.dispatch = [](Cmd* cmd) {
+	};
+	auto cmd = render_commands.Add<CmdType>();
+	cmd->vert_data = vertex_data;
+	cmd->index_data = index_data;
+	cmd->display_size = size;
+	cmd->dispatch = [](Cmd* cmd) {
 		auto data = reinterpret_cast<CmdType*>(cmd);
 		gl::UpdateDynamicVertexBuffer(imgui.vertex_buffer, data->vert_data);
 		gl::UpdateDynamicIndexBuffer(imgui.index_buffer, data->index_data);
 		imgui.display_size = data->display_size;
 	};
 
-	render_commands.Push(cmd);
+	
 }
 
-void rkg::render::DrawImguiCmd(uint32_t vertex_offset, uint32_t index_offset, uint32_t index_count, uint32_t scissor_x, uint32_t scissor_y, uint32_t scissor_w, uint32_t scissor_h)
+void render::DrawImguiCmd(uint32_t vertex_offset, uint32_t index_offset, uint32_t index_count, uint32_t scissor_x, uint32_t scissor_y, uint32_t scissor_w, uint32_t scissor_h)
 {
 	struct CmdType : Cmd
 	{
 		uint32_t vertex_offset, index_offset, index_count;
 		uint32_t x, y, w, h;
-	} cmd;
+	};
+	auto cmd = render_commands.Add<CmdType>();
+	cmd->vertex_offset = vertex_offset;
+	cmd->index_offset = index_offset;
+	cmd->index_count = index_count;
+	cmd->x = scissor_x;
+	cmd->y = scissor_y;
+	cmd->w = scissor_w;
+	cmd->h = scissor_h;
 
-	cmd.vertex_offset = vertex_offset;
-	cmd.index_offset = index_offset;
-	cmd.index_count = index_count;
-	cmd.x = scissor_x;
-	cmd.y = scissor_y;
-	cmd.w = scissor_w;
-	cmd.h = scissor_h;
-
-	cmd.dispatch = [](Cmd* cmd) {
+	cmd->dispatch = [](Cmd* cmd) {
 		auto data = reinterpret_cast<CmdType*>(cmd);
 		constexpr uint64_t raster_state = 0 |
 			gl::RenderState::BLEND_EQUATION_ADD |
@@ -272,9 +276,6 @@ void rkg::render::DrawImguiCmd(uint32_t vertex_offset, uint32_t index_offset, ui
 		gl::SetIndexBuffer(imgui.index_buffer, data->index_offset, data->index_count);
 		gl::Submit(imgui.render_layer, imgui.program);
 	};
-
-	render_commands.Push(cmd);
-
 }
 
 
