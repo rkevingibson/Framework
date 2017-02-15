@@ -91,8 +91,6 @@ void render::ResizeWindow(int w, int h)
 
 void render::Create(render::MeshObject* mesh_object)
 {
-
-
 }
 
 //void render::UpdateMeshData(RenderHandle mesh, const MemoryBlock * vertex_data, const MemoryBlock * index_data)
