@@ -1,29 +1,17 @@
 #include "RenderInterface.h"
 #include "Utilities/CommandStream.h"
+#include "External/GLFW/glfw3.h"
 #include "Renderer.h"
 #include <atomic>
 #include <thread>
+#include <vector>
 
 using namespace rkg;
 
 namespace
 {
 
-
-enum class RenderObjectType
-{
-	MESH,
-	IMGUI,
-};
-
-//Everything that exists on the render thread will inherit from this object
-struct RenderThreadObject
-{
-	RenderObjectType type;
-};
-
-
-struct RenderMesh : public RenderThreadObject
+struct RenderMesh
 {
 	gl::VertexBufferHandle vertex_buffer;
 	gl::IndexBufferHandle index_buffer;
@@ -35,6 +23,7 @@ std::atomic_flag render_fence{ ATOMIC_FLAG_INIT };
 std::atomic_flag game_fence{ ATOMIC_FLAG_INIT };
 CommandStream render_commands;
 
+std::vector<RenderMesh> meshes;
 
 void RenderLoop(GLFWwindow* window)
 {
@@ -59,12 +48,12 @@ void RenderLoop(GLFWwindow* window)
 
 }
 
-void ResizeWindow(int w, int h)
+namespace rkg
+{
+namespace render
 {
 
-}
-
-void render::Initialize(GLFWwindow* window)
+void Initialize(GLFWwindow* window)
 {
 	//Spawn thread and 
 	glfwMakeContextCurrent(nullptr);
@@ -73,7 +62,7 @@ void render::Initialize(GLFWwindow* window)
 
 }
 
-void render::ResizeWindow(int w, int h)
+void ResizeWindow(int w, int h)
 {
 	struct CmdType : Cmd
 	{
@@ -86,12 +75,20 @@ void render::ResizeWindow(int w, int h)
 		auto data = reinterpret_cast<CmdType*>(cmd);
 		glViewport(0, 0, data->w, data->h);
 	};
-	
 }
 
-void render::Create(render::MeshObject* mesh_object)
+namespace
 {
+	ecs::ComponentContainer<MeshComponent> mesh_components;
+
 }
+
+MeshComponent* CreateMeshComponent(ecs::EntityID entity)
+{
+	MeshComponent* result = mesh_components.Create(entity);
+	return result;
+}
+
 
 //void render::UpdateMeshData(RenderHandle mesh, const MemoryBlock * vertex_data, const MemoryBlock * index_data)
 //{
@@ -120,7 +117,7 @@ void render::Create(render::MeshObject* mesh_object)
 //}
 
 
-void render::EndFrame()
+void EndFrame()
 {
 	render_fence.clear();
 	while (game_fence.test_and_set(std::memory_order_acquire)) {
@@ -149,7 +146,7 @@ struct
 } imgui;
 }
 
-void render::InitImguiRendering(const MemoryBlock* font_data, int width, int height)
+void InitImguiRendering(const MemoryBlock* font_data, int width, int height)
 {
 	struct CmdType :Cmd
 	{
@@ -211,7 +208,7 @@ void render::InitImguiRendering(const MemoryBlock* font_data, int width, int hei
 	
 }
 
-void render::UpdateImguiData(const MemoryBlock* vertex_data, const MemoryBlock* index_data, const Vec2& size)
+void UpdateImguiData(const MemoryBlock* vertex_data, const MemoryBlock* index_data, const Vec2& size)
 {
 	struct CmdType : Cmd
 	{
@@ -233,7 +230,7 @@ void render::UpdateImguiData(const MemoryBlock* vertex_data, const MemoryBlock* 
 	
 }
 
-void render::DrawImguiCmd(uint32_t vertex_offset, uint32_t index_offset, uint32_t index_count, uint32_t scissor_x, uint32_t scissor_y, uint32_t scissor_w, uint32_t scissor_h)
+void DrawImguiCmd(uint32_t vertex_offset, uint32_t index_offset, uint32_t index_count, uint32_t scissor_x, uint32_t scissor_y, uint32_t scissor_w, uint32_t scissor_h)
 {
 	struct CmdType : Cmd
 	{
@@ -279,4 +276,5 @@ void render::DrawImguiCmd(uint32_t vertex_offset, uint32_t index_offset, uint32_
 
 
 
-
+}//end namespace render
+}//end namespace rkg

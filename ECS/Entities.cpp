@@ -10,18 +10,28 @@ ComponentContainer<Entity> entities;
 std::atomic_uint64_t next_id;
 }
 
-namespace rkg::ecs
+namespace rkg
 {
-	Entity* CreateEntity()
-	{
-		EntityID id = next_id++;
-		Entity* result = entities.Create(id);
-		result->id = id;
-		return result;
-	}
+namespace ecs
+{
 
-	Entity* GetEntity(EntityID id)
-	{
-		return entities.Get(id);
-	}
+Entity* CreateEntity()
+{
+	EntityID id = next_id++;
+	Entity* result = entities.Create(id);
+	result->entity_id = id;
+	return result;
+}
+
+Entity* GetEntity(EntityID id)
+{
+	return entities.Get(id);
+}
+
+void DestroyEntity(EntityID id)
+{
+	entities.Remove(id);
+}
+
+}
 }

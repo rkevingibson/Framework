@@ -1,8 +1,10 @@
 #pragma once
 
 #include "Utilities/Geometry.h"
-#include "External/GLFW/glfw3.h"
 #include "Utilities/Allocators.h"
+#include "ECS/Entities.h"
+#include "Renderer.h"
+struct GLFWwindow;
 
 namespace rkg
 {
@@ -11,24 +13,21 @@ namespace render
 
 using RenderHandle = uint64_t;
 
-//Everything that has a counterpart on the renderthread will inherit from this object.
-struct RenderSystemObject
+struct MeshComponent : ecs::Component
 {
-	RenderHandle render_handle;
+	RenderHandle mesh_handle;
+	RenderHandle material_handle;
+
 };
 
-
-
-struct MeshObject : public RenderSystemObject
-{
-
-};
 
 void Initialize(GLFWwindow* window);
 void ResizeWindow(int w, int h);
 
-void Create(MeshObject *mesh_object);
+MeshComponent* CreateMeshComponent(ecs::EntityID);
 //void UpdateMeshData(RenderHandle mesh, const MemoryBlock* vertex_data, const MemoryBlock* index_data);
+
+RenderHandle CreateMesh(const MemoryBlock* vertex_data, layout, const MemoryBlock* index_data, gl::IndexType type);
 
 
 void EndFrame();

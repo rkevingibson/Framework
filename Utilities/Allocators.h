@@ -383,7 +383,7 @@ public:
 		free(b.ptr);
 	}
 
-	void Reallocate(MemoryBlock b, size_t new_size)
+	void Reallocate(MemoryBlock& b, size_t new_size)
 	{
 		auto ptr = realloc(b.ptr, new_size);
 		if (ptr) {
