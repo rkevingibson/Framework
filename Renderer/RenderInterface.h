@@ -106,9 +106,12 @@ struct VertexLayout
 	{
 		Expects(binding < MAX_ATTRIBUTES);
 		Expects(num <= 4);
-		types[binding] = type;
+		types[num_attributes] = type;
 		//Pack the normalized bit into the high bit of the count.
-		counts[binding] = (num & 0b0111'1111) | ((uint8_t)normalized << 7);
+		counts[num_attributes] = ((num-1) & 0b0000'0011) 
+								 | ((binding << 2) & 0b0111'1100)
+								 | ((uint8_t)normalized << 7);
+		num_attributes++;
 		return *this;
 	}
 
@@ -121,6 +124,7 @@ struct VertexLayout
 		return s;
 	}
 
+	uint8_t num_attributes{ 0 };
 	AttributeType types[MAX_ATTRIBUTES];
 	uint8_t counts[MAX_ATTRIBUTES]{ 0 };
 	bool interleaved{ false };

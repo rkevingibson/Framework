@@ -1697,7 +1697,6 @@ void gl::Render()
 						if (vertex_layout.types[i] == render::VertexLayout::AttributeType::UNUSED) {
 							continue;
 						}
-						auto attrib_loc = i;
 						/*
 						Pack attribute info into 8 bits:
 						76543210
@@ -1707,12 +1706,14 @@ void gl::Render()
 						t - type
 						s - number
 						*/
+						
 						auto count = vertex_layout.counts[i];
-						bool normalized = (bool)(count & 0x80) >> 7;
-						GLuint size = (count & 0b0111'1111);
+						uint8_t attrib_loc = (count & 0b0111'1100) >> 2;
+						bool normalized = (bool)(count & 0b1000'0000) >> 7;
+						GLuint size = (count & 0b0000'0011) + 1;
 						glVertexAttribPointer(attrib_loc, size, 
 											  GetGLEnum(vertex_layout.types[i]), normalized, 
-											  vertex_layout.interleaved ? (vertex_size) : 0, 
+											  0, 
 											  (GLvoid*)attrib_offset);
 						glEnableVertexAttribArray(attrib_loc);
 						if (vertex_layout.interleaved) {
