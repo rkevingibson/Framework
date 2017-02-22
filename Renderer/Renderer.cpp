@@ -1709,7 +1709,7 @@ void gl::Render()
 						
 						auto count = vertex_layout.counts[i];
 						uint8_t attrib_loc = (count & 0b0111'1100) >> 2;
-						bool normalized = (bool)(count & 0b1000'0000) >> 7;
+						bool normalized = (count & 0b1000'0000) >> 7;
 						GLuint size = (count & 0b0000'0011) + 1;
 						glVertexAttribPointer(attrib_loc, size, 
 											  GetGLEnum(vertex_layout.types[i]), normalized, 
