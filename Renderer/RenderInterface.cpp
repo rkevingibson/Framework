@@ -163,9 +163,9 @@ void InitImguiRendering(const MemoryBlock* font_data, int width, int height)
 		const char vertex_shader[] =
 			"#version 330\n"
 			"uniform mat4 ProjMtx;\n"
-			"in vec2 Position;\n"
-			"in vec2 UV;\n"
-			"in vec4 Color;\n"
+			"layout(location = 0) in vec2 Position;\n"
+			"layout(location = 8) in vec2 UV;\n"
+			"layout(location = 4) in vec4 Color;\n"
 			"out vec2 Frag_UV;\n"
 			"out vec4 Frag_Color;\n"
 			"void main()\n"
@@ -196,13 +196,14 @@ void InitImguiRendering(const MemoryBlock* font_data, int width, int height)
 		auto data = reinterpret_cast<CmdType*>(cmd);
 		imgui.texture = gl::CreateTexture2D(data->width, data->height, gl::TextureFormat::RGBA8, data->font_data);
 
-		gl::VertexLayout vert_layout;
+		render::VertexLayout vert_layout;
 		vert_layout
-			.Add("Position", 2, gl::VertexLayout::AttributeType::Float32)
-			.Add("UV", 2, gl::VertexLayout::AttributeType::Float32)
-			.Add("Color", 4, gl::VertexLayout::AttributeType::Uint8, true);
+			.Add(VertexLayout::AttributeBinding::POSITION, 2, VertexLayout::AttributeType::FLOAT32)
+			.Add(VertexLayout::AttributeBinding::TEXCOORD0, 2, VertexLayout::AttributeType::FLOAT32)
+			.Add(VertexLayout::AttributeBinding::COLOR0, 4, VertexLayout::AttributeType::UINT8, true);
+		vert_layout.interleaved = true;
 		imgui.vertex_buffer = gl::CreateDynamicVertexBuffer(vert_layout);
-		imgui.index_buffer = gl::CreateDynamicIndexBuffer(gl::IndexType::UShort);
+		imgui.index_buffer = gl::CreateDynamicIndexBuffer(IndexType::UShort);
 	};
 
 	

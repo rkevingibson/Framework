@@ -259,7 +259,7 @@ struct VertexBuffer
 {
 	GLuint buffer;
 	uint32_t size;
-	VertexLayout layout;
+	render::VertexLayout layout;
 };
 
 struct IndexBuffer
@@ -650,89 +650,43 @@ const MemoryBlock* gl::LoadShaderFile(const char* file)
 }
 
 #pragma region VertexLayout functions
-VertexLayout & VertexLayout::Add(const char* name, uint16_t num, AttributeType::Enum type, bool normalized)
-{
-	Expects(type < AttributeType::Count);
-
-	/*
-		Pack attribute info into 8 bits:
-		76543210
-		xnttttss
-		x - reserved
-		n - normalized
-		t - type
-		s - number
-	*/
-	attribs[num_attributes] = 0 |
-		((normalized << 6) & 0x40) |
-		((type << 2) & 0x3C) |
-		((num - 1) & 0x03);
-	offset[num_attributes] = stride;
-	strcpy_s(names[num_attributes], MAX_ATTRIBUTE_NAME_LENGTH, name);
-	//Need to compute type size:
-	uint8_t size = 4;
-	if (type == AttributeType::Int8 || type == AttributeType::Uint8) {
-		size = 1;
-	} else if (type == AttributeType::Int16 || type == AttributeType::Uint16 || type == AttributeType::Float16) {
-		size = 2;
-	} else if (type == AttributeType::Float64) {
-		size = 8;
-	}
-
-	stride += size * num;
-
-	num_attributes++;
-	return *this;
-}
-
-VertexLayout & VertexLayout::Clear()
-{
-	for (int i = 0; i < MAX_ATTRIBUTES; ++i) {
-		offset[i] = 0;
-		attribs[i] = 0;
-		memset(names[i], 0, MAX_ATTRIBUTE_NAME_LENGTH);
-	}
-	stride = 0;
-	num_attributes = 0;
-	return *this;
-}
-
 namespace
 {
-GLenum GetGLEnum(VertexLayout::AttributeType::Enum val)
+GLenum GetGLEnum(render::VertexLayout::AttributeType val)
 {
+	using namespace render;
 	switch (val) {
-	case VertexLayout::AttributeType::Int8:
+	case VertexLayout::AttributeType::INT8:
 		return GL_BYTE;
 		break;
-	case VertexLayout::AttributeType::Uint8:
+	case VertexLayout::AttributeType::UINT8:
 		return GL_UNSIGNED_BYTE;
 		break;
-	case VertexLayout::AttributeType::Int16:
+	case VertexLayout::AttributeType::INT16:
 		return GL_SHORT;
 		break;
-	case VertexLayout::AttributeType::Uint16:
+	case VertexLayout::AttributeType::UINT16:
 		return GL_UNSIGNED_SHORT;
 		break;
-	case VertexLayout::AttributeType::Float16:
+	case VertexLayout::AttributeType::FLOAT16:
 		return GL_HALF_FLOAT;
 		break;
-	case VertexLayout::AttributeType::Int32:
+	case VertexLayout::AttributeType::INT32:
 		return GL_INT;
 		break;
-	case VertexLayout::AttributeType::Uint32:
+	case VertexLayout::AttributeType::UINT32:
 		return GL_UNSIGNED_INT;
 		break;
-	case VertexLayout::AttributeType::Packed_2_10_10_10_REV:
+	case VertexLayout::AttributeType::PACKED_2_10_10_10_REV:
 		return GL_INT_2_10_10_10_REV;
 		break;
-	case VertexLayout::AttributeType::UPacked_2_10_10_10_REV:
+	case VertexLayout::AttributeType::UPACKED_2_10_10_10_REV:
 		return GL_UNSIGNED_INT_2_10_10_10_REV;
 		break;
-	case VertexLayout::AttributeType::Float32:
+	case VertexLayout::AttributeType::FLOAT32:
 		return GL_FLOAT;
 		break;
-	case VertexLayout::AttributeType::Float64:
+	case VertexLayout::AttributeType::FLOAT64:
 		return GL_DOUBLE;
 		break;
 	default:
@@ -1048,7 +1002,7 @@ void gl::GetUniformInfo(UniformHandle h, char* name, int name_size, UniformType*
 
 #pragma region Vertex Buffer Functions
 
-VertexBufferHandle gl::CreateVertexBuffer(const MemoryBlock* data, const VertexLayout& layout)
+VertexBufferHandle gl::CreateVertexBuffer(const MemoryBlock* data, const render::VertexLayout& layout)
 {
 	GLuint buffer;
 	glGenBuffers(1, &buffer);
@@ -1080,7 +1034,7 @@ GLuint CreateBuffer(const MemoryBlock* block, GLenum target, GLenum usage)
 
 }
 
-VertexBufferHandle gl::CreateDynamicVertexBuffer(const MemoryBlock* data, const VertexLayout& layout)
+VertexBufferHandle gl::CreateDynamicVertexBuffer(const MemoryBlock* data, const render::VertexLayout& layout)
 {
 	auto vb = vertex_buffers.Create();
 	VertexBufferHandle result{ vb.index };
@@ -1091,7 +1045,7 @@ VertexBufferHandle gl::CreateDynamicVertexBuffer(const MemoryBlock* data, const 
 	return result;
 }
 
-VertexBufferHandle gl::CreateDynamicVertexBuffer(const VertexLayout& layout)
+VertexBufferHandle gl::CreateDynamicVertexBuffer(const render::VertexLayout& layout)
 {
 	return CreateDynamicVertexBuffer(nullptr, layout);
 }
@@ -1123,7 +1077,7 @@ void gl::UpdateDynamicVertexBuffer(VertexBufferHandle handle, const MemoryBlock*
 
 namespace
 {
-	uint32_t CreateElementBuffer(GLenum usage, IndexType type, const MemoryBlock* block)
+	uint32_t CreateElementBuffer(GLenum usage, render::IndexType type, const MemoryBlock* block)
 	{
 		auto buffer = index_buffers.Create();
 		*buffer.obj = IndexBuffer{};
@@ -1138,15 +1092,15 @@ namespace
 		buffer.obj->buffer = ib;
 
 		switch (type) {
-		case IndexType::UByte:
+		case render::IndexType::UByte:
 			buffer.obj->type = GL_UNSIGNED_BYTE;
 			buffer.obj->num_elements = size;
 			break;
-		case IndexType::UShort:
+		case render::IndexType::UShort:
 			buffer.obj->type = GL_UNSIGNED_SHORT;
 			buffer.obj->num_elements = size / 2;
 			break;
-		case IndexType::UInt:
+		case render::IndexType::UInt:
 			buffer.obj->type = GL_UNSIGNED_INT;
 			buffer.obj->num_elements = size / 4;
 			break;
@@ -1162,19 +1116,19 @@ namespace
 	}
 }
 
-IndexBufferHandle gl::CreateIndexBuffer(const MemoryBlock* data, IndexType type)
+IndexBufferHandle gl::CreateIndexBuffer(const MemoryBlock* data, render::IndexType type)
 {
 	IndexBufferHandle result{ CreateElementBuffer(GL_STATIC_DRAW, type, data) };
 	return result;
 }
 
-IndexBufferHandle gl::CreateDynamicIndexBuffer(const MemoryBlock* data, IndexType type)
+IndexBufferHandle gl::CreateDynamicIndexBuffer(const MemoryBlock* data, render::IndexType type)
 {
 	IndexBufferHandle result{ CreateElementBuffer(GL_DYNAMIC_DRAW, type, data) };
 	return result;
 }
 
-IndexBufferHandle gl::CreateDynamicIndexBuffer(IndexType type)
+IndexBufferHandle gl::CreateDynamicIndexBuffer(render::IndexType type)
 {
 	return CreateDynamicIndexBuffer(nullptr, type);
 }
@@ -1737,8 +1691,13 @@ void gl::Render()
 						glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, index_buffer.buffer);
 					}
 					auto vertex_size = vertex_layout.SizeOfVertex();
-					for (int i = 0; i < vertex_layout.num_attributes; i++) {
-						auto attrib_loc = glGetAttribLocation(program->id, vertex_layout.names[i]);
+					auto num_verts = vertex_buffer.size / vertex_size;
+					uint32_t attrib_offset = 0;
+					for (int i = 0; i < vertex_layout.MAX_ATTRIBUTES; i++) {
+						if (vertex_layout.types[i] == render::VertexLayout::AttributeType::UNUSED) {
+							continue;
+						}
+						auto attrib_loc = i;
 						/*
 						Pack attribute info into 8 bits:
 						76543210
@@ -1748,13 +1707,19 @@ void gl::Render()
 						t - type
 						s - number
 						*/
-						auto attrib = vertex_layout.attribs[i];
-						bool normalized = (attrib & 0x40) >> 6;
-						GLuint size = (attrib & 0x03) + 1;
-						auto type = (VertexLayout::AttributeType::Enum)((attrib & 0x3C) >> 2);
-
-						glVertexAttribPointer(attrib_loc, size, GetGLEnum(type), normalized, vertex_size, (void*)vertex_layout.offset[i]);
+						auto count = vertex_layout.counts[i];
+						bool normalized = (bool)(count & 0x80) >> 7;
+						GLuint size = (count & 0b0111'1111);
+						glVertexAttribPointer(attrib_loc, size, 
+											  GetGLEnum(vertex_layout.types[i]), normalized, 
+											  vertex_layout.interleaved ? (vertex_size) : 0, 
+											  (GLvoid*)attrib_offset);
 						glEnableVertexAttribArray(attrib_loc);
+						if (vertex_layout.interleaved) {
+							attrib_offset += size*render::VertexLayout::SizeOfType(vertex_layout.types[i]);
+						} else {
+							attrib_offset += num_verts*size*render::VertexLayout::SizeOfType(vertex_layout.types[i]);
+						}
 					}
 				}
 			}

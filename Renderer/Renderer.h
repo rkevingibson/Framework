@@ -12,6 +12,8 @@
 #include <cstdint>
 #include <limits>
 #include "../Utilities/Utilities.h"
+#include "RenderInterface.h"
+
 /*Enables some debug information - less efficient, stores some strings it otherwise wouldn't keep.*/
 #define RENDER_DEBUG
 struct GLFWwindow;
@@ -148,65 +150,11 @@ enum class UniformType : uint8_t
 	Count
 };
 
-//Types that can be used for an index buffer
-enum class IndexType
-{
-	UByte,
-	UShort,
-	UInt,
-};
-
 enum class TextureFormat
 {
 //TODO: Get more texture formats working
 	RGB8,
 	RGBA8,
-};
-
-struct VertexLayout
-{
-
-	struct AttributeType
-	{
-		enum Enum : uint8_t
-		{
-			Int8,
-			Uint8,
-
-			Int16,
-			Uint16,
-			Float16,
-
-			Int32,
-			Uint32,
-			Packed_2_10_10_10_REV,//GL_INT_2_10_10_10_REV
-			UPacked_2_10_10_10_REV,//GL_UNSIGNED_INT_2_10_10_10_REV
-			Float32,
-
-			Float64,
-			Count
-		};
-	};
-
-	static constexpr uint16_t MAX_ATTRIBUTES = 16;
-	static constexpr uint16_t MAX_ATTRIBUTE_NAME_LENGTH = 16;
-	//Add an attribute type.
-	VertexLayout& Add(const char* name, uint16_t num, AttributeType::Enum type, bool normalized = false);
-
-	//TODO: Figure out vertex layout description.
-	inline uint16_t SizeOfVertex()
-	{
-		return stride;
-	}
-
-
-	VertexLayout& Clear();
-
-	uint8_t num_attributes{ 0 };
-	uint16_t stride{ 0 };
-	uint16_t offset[MAX_ATTRIBUTES];
-	uint8_t attribs[MAX_ATTRIBUTES];
-	char names[MAX_ATTRIBUTES][MAX_ATTRIBUTE_NAME_LENGTH];
 };
 
 using ErrorCallbackFn = void(*)(const char* msg);
@@ -242,17 +190,17 @@ void	GetUniformInfo(UniformHandle h, char* name, int name_size, UniformType* typ
 #pragma endregion
 
 #pragma region Vertex Buffer Functions
-VertexBufferHandle	CreateVertexBuffer(const MemoryBlock* data, const VertexLayout& layout);
-VertexBufferHandle	CreateDynamicVertexBuffer(const MemoryBlock* data, const VertexLayout& layout);
-VertexBufferHandle	CreateDynamicVertexBuffer(const VertexLayout& layout);
+VertexBufferHandle	CreateVertexBuffer(const MemoryBlock* data, const render::VertexLayout& layout);
+VertexBufferHandle	CreateDynamicVertexBuffer(const MemoryBlock* data, const render::VertexLayout& layout);
+VertexBufferHandle	CreateDynamicVertexBuffer(const render::VertexLayout& layout);
 void	UpdateDynamicVertexBuffer(VertexBufferHandle handle, const MemoryBlock* data, const ptrdiff_t offset = 0);
 
 #pragma endregion
 
 #pragma region Index Buffer Functions
-IndexBufferHandle	CreateIndexBuffer(const MemoryBlock* data, IndexType type);
-IndexBufferHandle	CreateDynamicIndexBuffer(const MemoryBlock* data, IndexType type);
-IndexBufferHandle	CreateDynamicIndexBuffer(IndexType type);
+IndexBufferHandle	CreateIndexBuffer(const MemoryBlock* data, render::IndexType type);
+IndexBufferHandle	CreateDynamicIndexBuffer(const MemoryBlock* data, render::IndexType type);
+IndexBufferHandle	CreateDynamicIndexBuffer(render::IndexType type);
 void	UpdateDynamicIndexBuffer(IndexBufferHandle handle, const MemoryBlock* data, const ptrdiff_t offset = 0);
 #pragma endregion
 
