@@ -1713,7 +1713,7 @@ void gl::Render()
 						GLuint size = (count & 0b0000'0011) + 1;
 						glVertexAttribPointer(attrib_loc, size, 
 											  GetGLEnum(vertex_layout.types[i]), normalized, 
-											  0, 
+											  (vertex_layout.interleaved) ? vertex_size : 0, 
 											  (GLvoid*)attrib_offset);
 						glEnableVertexAttribArray(attrib_loc);
 						if (vertex_layout.interleaved) {

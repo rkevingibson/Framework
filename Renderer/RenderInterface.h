@@ -119,7 +119,7 @@ struct VertexLayout
 	{
 		size_t s = 0;
 		for (int i = 0; i < MAX_ATTRIBUTES; i++) {
-			s += SizeOfType(types[i])*counts[i];
+			s += SizeOfType(types[i])*((counts[i] & 0b0000'0011) + 1);
 		}
 		return s;
 	}
