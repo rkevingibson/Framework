@@ -1,8 +1,8 @@
 #pragma once
 
+#include "Utilities/Utilities.h"
 #include "Utilities/Geometry.h"
 #include "Utilities/Allocators.h"
-#include "ECS/Entities.h"
 struct GLFWwindow;
 
 namespace rkg
@@ -12,12 +12,20 @@ namespace render
 
 using RenderHandle = uint64_t;
 
-struct MeshComponent : ecs::Component
+enum class HandleType : uint8_t
 {
-	RenderHandle mesh_handle;
-	RenderHandle material_handle;
-
+	GEOMETRY = 0,
+	MATERIAL,
+	MESH,
+	NUM_HANDLE_TYPES
 };
+
+inline HandleType GetHandleType(RenderHandle h)
+{
+	auto result = static_cast<uint8_t>(h >> 56);
+	Ensures(result < static_cast<uint8_t>(HandleType::NUM_HANDLE_TYPES));
+	return static_cast<HandleType>(result);
+}
 
 struct VertexLayout
 {
@@ -142,10 +150,13 @@ enum class IndexType
 void Initialize(GLFWwindow* window);
 void ResizeWindow(int w, int h);
 
-MeshComponent* CreateMeshComponent(ecs::EntityID);
 //void UpdateMeshData(RenderHandle mesh, const MemoryBlock* vertex_data, const MemoryBlock* index_data);
 
-RenderHandle CreateMesh(const MemoryBlock* vertex_data, const VertexLayout&layout, const MemoryBlock* index_data, IndexType type);
+RenderHandle CreateGeometry(const MemoryBlock* vertex_data, const VertexLayout& layout, const MemoryBlock* index_data, IndexType type);
+void UpdateGeometry(const RenderHandle geometry, const MemoryBlock* vertex_data, const MemoryBlock* index_data);
+
+RenderHandle CreateMesh(const RenderHandle geometry, const RenderHandle material);
+
 
 
 void EndFrame();

@@ -6,24 +6,60 @@
 #include <thread>
 #include <vector>
 
-using namespace rkg;
+
+namespace rkg
+{
+namespace render
+{
+
 
 namespace
 {
 
-struct RenderMesh
+struct RenderGeometry
 {
 	gl::VertexBufferHandle vertex_buffer;
 	gl::IndexBufferHandle index_buffer;
-	Mat4 transform;
+};
+
+struct RenderMaterial
+{
+	//TODO: Materials!
+};
+
+struct RenderMesh
+{
+	RenderHandle geometry;
+	RenderHandle material;
+
+	//Basic mesh stuff - model transform, etc.
+
 
 };
+
+render::RenderHandle CreateHandle(uint64_t index, render::HandleType type)
+{
+	constexpr uint64_t INDEX_MASK = 0x00FF'FFFF'FFFF'FFFFu;
+	return (index & INDEX_MASK) | (static_cast<uint64_t>(type) << 56);
+}
+
+uint64_t GetIndex(render::RenderHandle handle)
+{
+	constexpr uint64_t INDEX_MASK = 0x00FF'FFFF'FFFF'FFFFu;
+	return (handle & INDEX_MASK);
+}
+
+
+
 
 std::atomic_flag render_fence{ ATOMIC_FLAG_INIT };
 std::atomic_flag game_fence{ ATOMIC_FLAG_INIT };
 CommandStream render_commands;
 
+//TODO: Replace these with thread-safe containers.
+std::vector<RenderGeometry> geometries;
 std::vector<RenderMesh> meshes;
+
 
 void RenderLoop(GLFWwindow* window)
 {
@@ -45,13 +81,9 @@ void RenderLoop(GLFWwindow* window)
 	}
 }
 
+} //end anonymous namespace
 
-}
 
-namespace rkg
-{
-namespace render
-{
 
 void Initialize(GLFWwindow* window)
 {
@@ -77,44 +109,68 @@ void ResizeWindow(int w, int h)
 	};
 }
 
-namespace
+RenderHandle CreateGeometry(const MemoryBlock * vertex_data, const VertexLayout & layout, const MemoryBlock * index_data, IndexType type)
 {
-	ecs::ComponentContainer<MeshComponent> mesh_components;
+	
+	struct CmdType : Cmd
+	{
+		const MemoryBlock* vertex_data;
+		VertexLayout layout;
+		const MemoryBlock* index_data;
+		IndexType type;
+
+		RenderHandle geom;
+	};
+
+	auto cmd = render_commands.Add<CmdType>();
+	cmd->vertex_data = vertex_data;
+	cmd->layout = layout;
+	cmd->index_data = index_data;
+	cmd->type = type;
+
+	geometries.emplace_back();
+	cmd->geom = CreateHandle(geometries.size() - 1, HandleType::GEOMETRY);
+	cmd->dispatch = [](Cmd* cmd) {
+		auto data = reinterpret_cast<CmdType*>(cmd);
+		auto vb = gl::CreateVertexBuffer(data->vertex_data, data->layout);
+		auto ib = gl::CreateIndexBuffer(data->index_data, data->type);
+
+		auto& geom = geometries[GetIndex(data->geom)];
+
+		geom.index_buffer = ib;
+		geom.vertex_buffer = vb;
+	};
+
+	return cmd->geom;
+}
+
+void UpdateGeometry(const RenderHandle geometry_handle, const MemoryBlock * vertex_data, const MemoryBlock * index_data)
+{
+	struct CmdType : Cmd
+	{
+		RenderHandle geometry;
+		const MemoryBlock* vertex_data;
+		const MemoryBlock* index_data;
+	};
+
+	auto cmd = render_commands.Add<CmdType>();
+	cmd->geometry = geometry_handle;
+	cmd->vertex_data = vertex_data;
+	cmd->index_data = index_data;
+	cmd->dispatch = [](Cmd* cmd) {
+		auto data = reinterpret_cast<CmdType*>(cmd);
+		auto& geom = geometries[GetIndex(data->geometry)];
+		gl::UpdateDynamicVertexBuffer(geom.vertex_buffer, data->vertex_data);
+		gl::UpdateDynamicIndexBuffer(geom.index_buffer, data->index_data);
+	};
+}
+
+RenderHandle CreateMesh(const RenderHandle geometry, const RenderHandle material)
+{
+	
 
 }
 
-MeshComponent* CreateMeshComponent(ecs::EntityID entity)
-{
-	MeshComponent* result = mesh_components.Create(entity);
-	return result;
-}
-
-
-//void render::UpdateMeshData(RenderHandle mesh, const MemoryBlock * vertex_data, const MemoryBlock * index_data)
-//{
-//	struct CmdType : Cmd
-//	{
-//		RenderHandle mesh;
-//		const MemoryBlock* vertex_data;
-//		const MemoryBlock* index_data;
-//	} cmd;
-//	cmd.mesh = mesh;
-//	cmd.vertex_data = vertex_data;
-//	cmd.index_data = index_data;
-//	cmd.dispatch = [](Cmd* cmd) {
-//		auto data = reinterpret_cast<CmdType*>(cmd);
-//		//Look up the mesh from the handle.
-//
-//
-//		if (data->vertex_data) {
-//			gl::UpdateDynamicVertexBuffer(, data->vertex_data);
-//		}
-//		if (data->index_data) {
-//			gl::UpdateDynamicIndexBuffer(, data->index_data);
-//		}
-//	};
-//	render_commands.Push(cmd);
-//}
 
 
 void EndFrame()
@@ -125,10 +181,8 @@ void EndFrame()
 	}
 }
 
-
-
 //
-//IMGUI FUNCTIONS
+//IMGUI FUNCTIONS - Will be phased out once the other stuff works well enough to support it.
 //
 
 namespace
