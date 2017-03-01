@@ -1215,6 +1215,14 @@ void gl::UpdateAtomicCounterBuffer(AtomicCounterBufferHandle h, const MemoryBloc
 
 #pragma endregion
 
+#pragma region Uniform Buffer Functions
+
+UniformBufferHandle gl::CreateUniformBuffer()
+{
+
+	CreateBuffer(nullptr, GL_UNIFORM_BUFFER, GL_DYNAMIC_DRAW);
+}
+
 #pragma region Texture Functions
 
 namespace

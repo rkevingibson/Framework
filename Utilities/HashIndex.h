@@ -34,6 +34,7 @@ private:
 	uint32_t* back_table_{ nullptr };
 
 	uint32_t front_mask_;
+	uint32_t back_mask_;
 
 	Mallocator allocator_;
 

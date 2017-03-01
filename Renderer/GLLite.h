@@ -85,6 +85,11 @@ typedef void (GLAPI DEBUGPROC)(GLenum source, GLenum type, GLuint id, GLenum sev
 #define GL_SHADER_STORAGE_BUFFER          0x90D2
 #define GL_ATOMIC_COUNTER_BUFFER          0x92C0
 #define GL_SHADER_STORAGE_BARRIER_BIT     0x00002000
+#define GL_UNIFORM_BUFFER                 0x8A11
+#define GL_UNIFORM_BUFFER_BINDING         0x8A28
+#define GL_UNIFORM_BUFFER_START           0x8A29
+#define GL_UNIFORM_BUFFER_SIZE            0x8A2A
+
 /*
 Define X-macro of opengl functions to load.
 order is ret, name, args...

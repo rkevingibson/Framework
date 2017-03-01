@@ -1,5 +1,6 @@
 #include "RenderInterface.h"
 #include "Utilities/CommandStream.h"
+#include "Utilities/HashIndex.h"
 #include "External/GLFW/glfw3.h"
 #include "Renderer.h"
 #include <atomic>
@@ -25,31 +26,106 @@ struct RenderGeometry
 struct RenderMaterial
 {
 	//TODO: Materials!
+
+	gl::ProgramHandle program;
 };
 
 struct RenderMesh
 {
-	RenderHandle geometry;
-	RenderHandle material;
+	RenderResource geometry;
+	RenderResource material;
 
 	//Basic mesh stuff - model transform, etc.
-
-
 };
 
-render::RenderHandle CreateHandle(uint64_t index, render::HandleType type)
+template<typename T>
+class ResourceContainer
+{
+public: 
+	struct Pair
+	{
+		T resource;
+		uint32_t id;
+	};
+
+private:
+	
+
+	HashIndex hash_index_;
+	std::vector<Pair> data_;
+	std::atomic<uint32_t> next_id_{ 0 };
+
+public:
+
+	
+	ResourceContainer() = default;
+
+	/*
+		Thread-safe reserving of indices.
+	*/
+	uint32_t ReserveIndex()
+	{
+		return next_id_++;
+	}
+
+	/*
+		Only will be called by the render thread.
+	*/
+	T* Add(RenderResource id)
+	{
+		uint32_t key = id & INDEX_MASK;
+		uint32_t index = (uint32_t)data_.size();
+		data_.emplace_back(T{}, key);
+
+
+		hash_index_.Add(key, index);
+		return &data_[index].resource;
+	}
+
+	/*Do the hash lookup*/
+	T& operator[](RenderResource id)
+	{
+		constexpr uint64_t INDEX_MASK = 0x0000'0000'FFFF'FFFFu;
+		uint32_t key = id & INDEX_MASK; 
+		uint32_t num_components = data_.size();
+		for (uint32_t i = hash_index_.First(key);
+			 i != HashIndex::INVALID_INDEX && i < num_components;
+			 i = hash_index_.Next(i)) {
+			if (data_[i].id == key) {
+				return data_[i].resource;
+			}
+		}
+		
+		Ensures(false && "This should never happen!");
+		return T{};
+	}
+
+
+	friend Pair* begin(ResourceContainer& c) {
+		return c.data_.begin();
+	}
+
+	friend Pair* begin(const ResourceContainer& c) {
+		return c.data_.cbegin();
+	}
+
+	friend Pair* end(ResourceContainer& c) {
+		return c.data_.end();
+	}
+
+	friend Pair* end(const ResourceContainer& c) {
+		return c.data_.cend();
+	}
+};
+
+
+
+
+render::RenderResource CreateHandle(uint32_t index, render::ResourceType type)
 {
 	constexpr uint64_t INDEX_MASK = 0x00FF'FFFF'FFFF'FFFFu;
 	return (index & INDEX_MASK) | (static_cast<uint64_t>(type) << 56);
 }
-
-uint64_t GetIndex(render::RenderHandle handle)
-{
-	constexpr uint64_t INDEX_MASK = 0x00FF'FFFF'FFFF'FFFFu;
-	return (handle & INDEX_MASK);
-}
-
-
 
 
 std::atomic_flag render_fence{ ATOMIC_FLAG_INIT };
@@ -57,8 +133,9 @@ std::atomic_flag game_fence{ ATOMIC_FLAG_INIT };
 CommandStream render_commands;
 
 //TODO: Replace these with thread-safe containers.
-std::vector<RenderGeometry> geometries;
-std::vector<RenderMesh> meshes;
+ResourceContainer<RenderGeometry> geometries;
+ResourceContainer<RenderMesh> meshes;
+ResourceContainer<RenderMaterial> materials;
 
 
 void RenderLoop(GLFWwindow* window)
@@ -75,6 +152,19 @@ void RenderLoop(GLFWwindow* window)
 
 		//Other rendering happens here. All calls to the render backend occur here.
 
+		for (auto& pair : meshes) {
+			auto& geom = geometries[pair.resource.geometry];
+			auto& material = materials[pair.resource.material];
+			//Draw this geometry.
+
+			gl::SetVertexBuffer(geom.vertex_buffer);
+			gl::SetIndexBuffer(geom.index_buffer);
+
+			//Set any uniforms.
+
+			gl::Submit(0, material.program);
+		}
+
 
 		gl::Render();
 		glfwSwapBuffers(window);
@@ -82,8 +172,6 @@ void RenderLoop(GLFWwindow* window)
 }
 
 } //end anonymous namespace
-
-
 
 void Initialize(GLFWwindow* window)
 {
@@ -109,7 +197,7 @@ void ResizeWindow(int w, int h)
 	};
 }
 
-RenderHandle CreateGeometry(const MemoryBlock * vertex_data, const VertexLayout & layout, const MemoryBlock * index_data, IndexType type)
+RenderResource CreateGeometry(const MemoryBlock * vertex_data, const VertexLayout & layout, const MemoryBlock * index_data, IndexType type)
 {
 	
 	struct CmdType : Cmd
@@ -119,7 +207,7 @@ RenderHandle CreateGeometry(const MemoryBlock * vertex_data, const VertexLayout 
 		const MemoryBlock* index_data;
 		IndexType type;
 
-		RenderHandle geom;
+		RenderResource geom;
 	};
 
 	auto cmd = render_commands.Add<CmdType>();
@@ -128,27 +216,26 @@ RenderHandle CreateGeometry(const MemoryBlock * vertex_data, const VertexLayout 
 	cmd->index_data = index_data;
 	cmd->type = type;
 
-	geometries.emplace_back();
-	cmd->geom = CreateHandle(geometries.size() - 1, HandleType::GEOMETRY);
+	cmd->geom = CreateHandle(geometries.ReserveIndex(), ResourceType::GEOMETRY);
 	cmd->dispatch = [](Cmd* cmd) {
 		auto data = reinterpret_cast<CmdType*>(cmd);
 		auto vb = gl::CreateVertexBuffer(data->vertex_data, data->layout);
 		auto ib = gl::CreateIndexBuffer(data->index_data, data->type);
 
-		auto& geom = geometries[GetIndex(data->geom)];
+		auto geom = geometries.Add(data->geom);
 
-		geom.index_buffer = ib;
-		geom.vertex_buffer = vb;
+		geom->index_buffer = ib;
+		geom->vertex_buffer = vb;
 	};
 
 	return cmd->geom;
 }
 
-void UpdateGeometry(const RenderHandle geometry_handle, const MemoryBlock * vertex_data, const MemoryBlock * index_data)
+void UpdateGeometry(const RenderResource geometry_handle, const MemoryBlock * vertex_data, const MemoryBlock * index_data)
 {
 	struct CmdType : Cmd
 	{
-		RenderHandle geometry;
+		RenderResource geometry;
 		const MemoryBlock* vertex_data;
 		const MemoryBlock* index_data;
 	};
@@ -159,19 +246,57 @@ void UpdateGeometry(const RenderHandle geometry_handle, const MemoryBlock * vert
 	cmd->index_data = index_data;
 	cmd->dispatch = [](Cmd* cmd) {
 		auto data = reinterpret_cast<CmdType*>(cmd);
-		auto& geom = geometries[GetIndex(data->geometry)];
+		auto& geom = geometries[data->geometry];
 		gl::UpdateDynamicVertexBuffer(geom.vertex_buffer, data->vertex_data);
 		gl::UpdateDynamicIndexBuffer(geom.index_buffer, data->index_data);
 	};
 }
 
-RenderHandle CreateMesh(const RenderHandle geometry, const RenderHandle material)
+RenderResource CreateMesh(const RenderResource geometry, const RenderResource material)
 {
-	
+	struct CmdType :Cmd
+	{
+		RenderResource geometry;
+		RenderResource material;
+		RenderResource mesh;
+	};
 
+	auto cmd = render_commands.Add<CmdType>();
+	cmd->geometry = geometry;
+	cmd->material = material;
+	cmd->mesh = CreateHandle(meshes.ReserveIndex(), ResourceType::MESH);
+	cmd->dispatch = [](Cmd* cmd) {
+		auto data = reinterpret_cast<CmdType*>(cmd);
+		auto mesh = meshes.Add(data->mesh);
+		mesh->geometry = data->geometry;
+		mesh->material = data->material;
+	};
+
+	return cmd->mesh;
 }
 
+RenderResource CreateMaterial(const MemoryBlock* vertex_shader, const MemoryBlock* frag_shader)
+{
+	struct CmdType : Cmd
+	{
+		const MemoryBlock* vert_shader;
+		const MemoryBlock* frag_shader;
+		RenderResource mat;
+	};
 
+	auto cmd = render_commands.Add<CmdType>();
+	cmd->vert_shader = vertex_shader;
+	cmd->frag_shader = frag_shader;
+	cmd->mat = CreateHandle(materials.ReserveIndex(), ResourceType::MATERIAL);
+	cmd->dispatch = [](Cmd* cmd) {
+		auto data = reinterpret_cast<CmdType*>(cmd);
+
+		auto material = materials.Add(data->mat);
+		material->program = gl::CreateProgram(data->vert_shader, data->frag_shader);
+	};
+
+	return cmd->mat;
+}
 
 void EndFrame()
 {

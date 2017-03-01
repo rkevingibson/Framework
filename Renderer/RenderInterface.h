@@ -10,9 +10,9 @@ namespace rkg
 namespace render
 {
 
-using RenderHandle = uint64_t;
+using RenderResource = uint64_t;
 
-enum class HandleType : uint8_t
+enum class ResourceType : uint8_t
 {
 	GEOMETRY = 0,
 	MATERIAL,
@@ -20,11 +20,11 @@ enum class HandleType : uint8_t
 	NUM_HANDLE_TYPES
 };
 
-inline HandleType GetHandleType(RenderHandle h)
+inline ResourceType GetResourceType(RenderResource h)
 {
 	auto result = static_cast<uint8_t>(h >> 56);
-	Ensures(result < static_cast<uint8_t>(HandleType::NUM_HANDLE_TYPES));
-	return static_cast<HandleType>(result);
+	Ensures(result < static_cast<uint8_t>(ResourceType::NUM_HANDLE_TYPES));
+	return static_cast<ResourceType>(result);
 }
 
 struct VertexLayout
@@ -152,11 +152,12 @@ void ResizeWindow(int w, int h);
 
 //void UpdateMeshData(RenderHandle mesh, const MemoryBlock* vertex_data, const MemoryBlock* index_data);
 
-RenderHandle CreateGeometry(const MemoryBlock* vertex_data, const VertexLayout& layout, const MemoryBlock* index_data, IndexType type);
-void UpdateGeometry(const RenderHandle geometry, const MemoryBlock* vertex_data, const MemoryBlock* index_data);
+RenderResource CreateGeometry(const MemoryBlock* vertex_data, const VertexLayout& layout, const MemoryBlock* index_data, IndexType type);
+void UpdateGeometry(const RenderResource geometry, const MemoryBlock* vertex_data, const MemoryBlock* index_data);
 
-RenderHandle CreateMesh(const RenderHandle geometry, const RenderHandle material);
+RenderResource CreateMesh(const RenderResource  geometry, const RenderResource material);
 
+RenderResource CreateMaterial(const MemoryBlock* vertex_shader, const MemoryBlock* frag_shader);
 
 
 void EndFrame();

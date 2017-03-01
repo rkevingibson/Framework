@@ -33,7 +33,7 @@ RENDER_HANDLE(UniformHandle);
 RENDER_HANDLE(AtomicCounterBufferHandle);
 RENDER_HANDLE(SSBOHandle);
 RENDER_HANDLE(TextureHandle);
-
+RENDER_HANDLE(UniformBufferHandle);
 
 constexpr uint32_t INVALID_HANDLE = std::numeric_limits<uint32_t>::max();
 
@@ -222,6 +222,8 @@ void UpdateTexture2D(TextureHandle handle, const MemoryBlock* data);
 UniformHandle	CreateUniform(const char* name, UniformType type);
 //Sets uniforms - these will be set on the program of whatever the next submit call is on the calling thread.
 void SetUniform(UniformHandle handle, const void* data, int num = 1);
+
+UniformBufferHandle CreateUniformBuffer();
 
 
 //Because handles are all unique types, we can have nice overloading to keep things simple.
