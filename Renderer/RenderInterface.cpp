@@ -28,7 +28,7 @@ struct RenderMaterial
 	//TODO: Materials!
 	//Eventually, support multi-pass rendering through data driven materials.
 	//For now, just a default PBR-like material.
-
+	PropertyBlock block;
 
 	gl::BufferHandle uniform_buffer;
 	gl::ProgramHandle program;
@@ -46,9 +46,7 @@ struct RenderMesh
 		Mat4 V;
 		Mat4 MV;
 		Mat4 MVP;
-	};
-
-	Mat4 model_transform;
+	} mesh_uniforms;
 	gl::BufferHandle uniform_buffer;
 };
 
@@ -91,9 +89,32 @@ public:
 		uint32_t index = (uint32_t)data_.size();
 		data_.emplace_back(Pair{ T{}, key });
 
-
 		hash_index_.Add(key, index);
 		return &data_[index].resource;
+	}
+
+	void Remove(RenderResource id)
+	{
+		uint32_t key = id & INDEX_MASK;
+
+		uint32_t num_components = data_.size();
+		for (uint32_t i = hash_index_.First(key);
+			 i != HashIndex::INVALID_INDEX && i < num_components;
+			 i = hash_index_.Next(i)) {
+			if (data_[i].id == key) {
+				//Swap with the last entry before removing.
+				data_[i] = std::move(data_.back());
+				auto other_index = data_.size() - 1;
+				auto other_id = data_[i].id;
+				hash_index_.Remove(other_id, other_index);
+				hash_index_.Remove(key, i);
+				hash_index_.Add(other_id, i);
+				data_.pop_back();
+				return;
+			}
+		}
+
+		
 	}
 
 	/*Do the hash lookup*/
@@ -140,6 +161,7 @@ render::RenderResource CreateHandle(uint32_t index, render::ResourceType type)
 std::atomic_flag render_fence{ ATOMIC_FLAG_INIT };
 std::atomic_flag game_fence{ ATOMIC_FLAG_INIT };
 CommandStream render_commands;
+CommandStream postrender_commands;
 
 Mat4 view_matrix;
 Mat4 projection_matrix;
@@ -157,23 +179,41 @@ void RenderLoop(GLFWwindow* window)
 			std::this_thread::yield();
 		} //Spin while this flag hasn't been set by the other thread.
 		render_commands.SwapBuffers(); //Need to signal to the other threads that they can now make render calls.
+		postrender_commands.SwapBuffers();
 		game_fence.clear();
+
 		//Update our state by pumping the command list. This syncs state between the game + render threads.
 		render_commands.ExecuteAll();
 
-		//Other rendering happens here. All calls to the render backend occur here.
+		
+		//Update all materials that have been changed.
+		for (auto& pair : materials) {
+			auto& mat = pair.resource;
+			if (mat.block.dirty) {
+				auto ref = gl::MakeRef(mat.block.buffer.get(), mat.block.buffer_size);
+				gl::UpdateBufferObject(mat.uniform_buffer, ref);
+			}
+		}
 
+		//Draw all the meshes.
+		//TODO: Culling.
 		for (auto& pair : meshes) {
 			auto& mesh = pair.resource;
 			auto& geom = geometries[pair.resource.geometry];
 			auto& material = materials[pair.resource.material];
 			//Draw this geometry.
 
+			//Update the ModelBlock variables.
+			mesh.mesh_uniforms.V = view_matrix;
+			mesh.mesh_uniforms.MV = view_matrix*mesh.mesh_uniforms.M;
+			mesh.mesh_uniforms.MVP = projection_matrix*mesh.mesh_uniforms.MV;
+
+			auto ref = gl::MakeRef(&mesh.mesh_uniforms, sizeof(RenderMesh::MeshUniforms));
+			gl::UpdateBufferObject(mesh.uniform_buffer, ref);
+
 			gl::SetVertexBuffer(geom.vertex_buffer);
 			gl::SetIndexBuffer(geom.index_buffer);
-
 			//Set any uniforms.
-			
 			
 			gl::SetBufferObject(mesh.uniform_buffer, gl::BufferTarget::UNIFORM, 0);
 			gl::SetBufferObject(material.uniform_buffer, gl::BufferTarget::UNIFORM, 1);
@@ -183,6 +223,9 @@ void RenderLoop(GLFWwindow* window)
 
 		gl::Render();
 		glfwSwapBuffers(window);
+
+
+		postrender_commands.ExecuteAll();
 	}
 }
 
@@ -248,6 +291,8 @@ RenderResource CreateGeometry(const MemoryBlock * vertex_data, const VertexLayou
 
 void UpdateGeometry(const RenderResource geometry_handle, const MemoryBlock * vertex_data, const MemoryBlock * index_data)
 {
+	Expects(GetResourceType(geometry_handle) == ResourceType::GEOMETRY);
+
 	struct CmdType : Cmd
 	{
 		RenderResource geometry;
@@ -267,8 +312,27 @@ void UpdateGeometry(const RenderResource geometry_handle, const MemoryBlock * ve
 	};
 }
 
+void DeleteGeometry(RenderResource geometry)
+{
+	Expects(GetResourceType(geometry) == ResourceType::GEOMETRY);
+	struct CmdType : Cmd
+	{
+		RenderResource geom;
+	};
+
+	auto cmd = postrender_commands.Add<CmdType>();
+	cmd->geom = geometry;
+	cmd->dispatch = [](Cmd* cmd) {
+		auto data = reinterpret_cast<CmdType*>(cmd);
+		geometries.Remove(data->geom);
+	};
+}
+
 RenderResource CreateMesh(const RenderResource geometry, const RenderResource material)
 {
+	Expects(GetResourceType(geometry) == ResourceType::GEOMETRY);
+	Expects(GetResourceType(material) == ResourceType::MATERIAL);
+
 	struct CmdType :Cmd
 	{
 		RenderResource geometry;
@@ -291,6 +355,42 @@ RenderResource CreateMesh(const RenderResource geometry, const RenderResource ma
 	return cmd->mesh;
 }
 
+void DeleteMesh(const RenderResource mesh)
+{
+	Expects(GetResourceType(mesh) == ResourceType::MESH);
+	struct CmdType : Cmd
+	{
+		RenderResource mesh;
+	};
+
+	auto cmd = postrender_commands.Add<CmdType>();
+	cmd->mesh = mesh;
+	cmd->dispatch = [](Cmd* cmd) {
+		auto data = reinterpret_cast<CmdType*>(cmd);
+		meshes.Remove(data->mesh);
+	};
+}
+
+void SetModelTransform(const RenderResource mesh, const Mat4& matrix)
+{
+	Expects(GetResourceType(mesh) == ResourceType::MESH);
+
+	struct CmdType : Cmd
+	{
+		RenderResource mesh;
+		Mat4 mat;
+	};
+
+	auto cmd = render_commands.Add<CmdType>();
+	cmd->mat = matrix;
+	cmd->mesh = mesh;
+	cmd->dispatch = [](Cmd* cmd) {
+		auto data = reinterpret_cast<CmdType*>(cmd);
+		auto& mesh = meshes[data->mesh];
+		mesh.mesh_uniforms.M = data->mat;
+	};
+}
+
 RenderResource CreateMaterial(const MemoryBlock* vertex_shader, const MemoryBlock* frag_shader)
 {
 	struct CmdType : Cmd
@@ -309,9 +409,47 @@ RenderResource CreateMaterial(const MemoryBlock* vertex_shader, const MemoryBloc
 		auto material = materials.Add(data->mat);
 		material->uniform_buffer = gl::CreateBufferObject();
 		material->program = gl::CreateProgram(data->vert_shader, data->frag_shader);
+		gl::GetUniformBlockInfo(material->program, "MaterialBlock", &material->block);
 	};
 
 	return cmd->mat;
+}
+
+void SetMaterialParameter(const RenderResource material, const char* name, const void* value, size_t size)
+{
+	struct CmdType :Cmd
+	{
+		RenderResource mat;
+		const char* name;
+		const MemoryBlock* block;
+	};
+
+	auto cmd = render_commands.Add<CmdType>();
+	cmd->block = gl::AllocAndCopy(value, size);
+	cmd->mat = material;
+	cmd->name = name; //TODO: THIS IS WRONG!!!!
+	cmd->dispatch = [](Cmd* cmd) {
+		auto data = reinterpret_cast<CmdType*>(cmd);
+		auto& material = materials[data->mat];
+		material.block.SetProperty(data->name, data->block->ptr, data->block->length);
+	};
+}
+
+void DeleteMaterial(RenderResource material)
+{
+	Expects(GetResourceType(material) == ResourceType::MATERIAL);
+
+	struct CmdType : Cmd
+	{
+		RenderResource mat;
+	};
+
+	auto cmd = postrender_commands.Add<CmdType>();
+	cmd->mat = material;
+	cmd->dispatch = [](Cmd* cmd) {
+		auto data = reinterpret_cast<CmdType*>(cmd);
+		materials.Remove(data->mat);
+	};
 }
 
 void SetViewTransform(const Mat4& matrix)
@@ -342,7 +480,6 @@ void SetProjectionTransform(const Mat4& matrix)
 		projection_matrix = data->mat;
 	};
 }
-
 
 void EndFrame()
 {

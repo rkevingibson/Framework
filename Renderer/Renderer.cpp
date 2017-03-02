@@ -1021,6 +1021,57 @@ void gl::GetUniformInfo(UniformHandle h, char* name, int name_size, UniformType*
 	}
 }
 
+void gl::GetUniformBlockInfo(ProgramHandle h, const char* block_name, render::PropertyBlock*block)
+{
+	auto program = programs[h.index].id;
+	auto block_index = glGetUniformBlockIndex(program, block_name);
+	GLint data_size;
+	glGetActiveUniformBlockiv(program, block_index, GL_UNIFORM_BLOCK_DATA_SIZE, &data_size);
+	
+	block->buffer = std::make_unique<char[]>(data_size);
+	block->buffer_size = data_size;
+	
+	GLint num_uniforms;
+	glGetActiveUniformBlockiv(program, block_index, GL_UNIFORM_BLOCK_ACTIVE_UNIFORMS, &num_uniforms);
+
+	//NOTE: How do I want to handle memory allocation here?
+	//Lets assume I'm filling out some structure that has an allocator.
+	//But I have temporaries to fill out - I can probably use a stack allocator for this, since things are small.
+	//rkg::StackAllocator<KILO(2)> allocator;
+
+	auto indices = std::make_unique<GLint[]>(num_uniforms);
+	glGetActiveUniformBlockiv(program, block_index, GL_UNIFORM_BLOCK_ACTIVE_UNIFORM_INDICES, indices.get());
+
+	auto offsets = std::make_unique<GLint[]>(num_uniforms);
+	glGetActiveUniformsiv(program, num_uniforms, (GLuint*)indices.get(), GL_UNIFORM_OFFSET, offsets.get());
+	auto name_lengths = std::make_unique<GLint[]>(num_uniforms);
+	glGetActiveUniformsiv(program, num_uniforms, (GLuint*)indices.get(), GL_UNIFORM_NAME_LENGTH, name_lengths.get());
+	auto array_strides = std::make_unique<GLint[]>(num_uniforms);
+	glGetActiveUniformsiv(program, num_uniforms, (GLuint*)indices.get(), GL_UNIFORM_ARRAY_STRIDE, array_strides.get());
+	auto matrix_strides = std::make_unique<GLint[]>(num_uniforms);
+	glGetActiveUniformsiv(program, num_uniforms, (GLuint*)indices.get(), GL_UNIFORM_MATRIX_STRIDE, matrix_strides.get());
+	auto sizes = std::make_unique<GLint[]>(num_uniforms);
+	glGetActiveUniformsiv(program, num_uniforms, (GLuint*)indices.get(), GL_UNIFORM_SIZE, matrix_strides.get());
+	auto types = std::make_unique<GLint[]>(num_uniforms);
+	glGetActiveUniformsiv(program, num_uniforms, (GLuint*)indices.get(), GL_UNIFORM_TYPE, matrix_strides.get());
+
+	//Get the uniform names.
+	for (int i = 0; i < num_uniforms; i++) {
+		
+		auto name = std::make_unique<char[]>(name_lengths[i] + 1);
+		GLsizei len;
+		glGetActiveUniformName(program, indices[i], name_lengths[i] + 1, &len, name.get());
+		render::PropertyBlock::Property p;
+		p.offset = offsets[i];
+		p.array_stride = array_strides[i];
+		p.matrix_stride = matrix_strides[i];
+		p.size = sizes[i];
+		p.type = types[i];
+		block->properties[name.get()] = p;
+	}
+}
+
+
 #pragma region Vertex Buffer Functions
 
 VertexBufferHandle gl::CreateVertexBuffer(const MemoryBlock* data, const render::VertexLayout& layout)
@@ -1216,6 +1267,12 @@ BufferHandle gl::CreateBufferObject(const MemoryBlock* data)
 	buffer.obj->buffer = CreateBuffer(data, GL_COPY_WRITE_BUFFER, GL_DYNAMIC_DRAW);
 
 	return result;
+}
+
+void rkg::gl::UpdateBufferObject(BufferHandle handle, const MemoryBlock * data)
+{
+	auto& buff = buffer_objects[handle.index];
+	UpdateDynamicBuffer(GL_COPY_WRITE_BUFFER, buff.buffer, data, &buff.size);
 }
 
 #pragma region Texture Functions
@@ -1562,7 +1619,7 @@ void gl::Render()
 		}
 
 		for (int binding = 0; binding < MAX_BUFFER_BINDINGS; binding++) {
-			if (cmd->buffers[binding].buffer_object != UINT32_MAX) {
+			if (cmd->buffers[binding].buffer_object != UINT32_MAX && cmd->buffers[binding].size != 0) {
 				auto& buffer = cmd->buffers[binding];
 				glBindBufferRange(buffer.target, binding, buffer.buffer_object, buffer.offset, buffer.size);
 			}

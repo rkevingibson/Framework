@@ -3,6 +3,10 @@
 #include "Utilities/Utilities.h"
 #include "Utilities/Geometry.h"
 #include "Utilities/Allocators.h"
+
+#include <string>
+#include <unordered_map>
+#include <memory>
 struct GLFWwindow;
 
 namespace rkg
@@ -146,6 +150,41 @@ enum class IndexType
 	UInt,
 };
 
+class PropertyBlock
+{
+	//TODO: Replace the implementation of this with 
+	//something I have more memory control over.
+	//Also, see if I can replace the string dependency with a hash instead.
+
+
+public:
+	struct Property
+	{
+		uint32_t offset;
+		uint32_t size;
+		uint32_t type;
+		uint16_t array_stride;
+		uint16_t matrix_stride;
+	};
+	bool dirty = false;
+	
+	inline void SetProperty(const char* name, const void* value, int size)
+	{
+		if (properties.count(name) == 1) {
+			auto& prop = properties[name];
+			char* dest = buffer.get() + prop.offset;
+			//TODO: Size checking.
+			memcpy(dest, value, size);
+			dirty = true;
+		}
+	}
+
+
+	std::unordered_map<std::string, Property> properties;
+	std::unique_ptr<char[]> buffer;
+	size_t buffer_size;
+};
+
 
 void Initialize(GLFWwindow* window);
 void ResizeWindow(int w, int h);
@@ -154,12 +193,16 @@ void ResizeWindow(int w, int h);
 
 RenderResource CreateGeometry(const MemoryBlock* vertex_data, const VertexLayout& layout, const MemoryBlock* index_data, IndexType type);
 void UpdateGeometry(const RenderResource geometry, const MemoryBlock* vertex_data, const MemoryBlock* index_data);
-
-RenderResource CreateMesh(const RenderResource  geometry, const RenderResource material);
+void DeleteGeometry(RenderResource geometry);
 
 RenderResource CreateMaterial(const MemoryBlock* vertex_shader, const MemoryBlock* frag_shader);
+void SetMaterialParameter(const RenderResource material, const char* name, const void* value, size_t size);
+void DeleteMaterial(RenderResource material);
 
+RenderResource CreateMesh(const RenderResource  geometry, const RenderResource material);
+void DeleteMesh(const RenderResource mesh);
 
+void SetModelTransform(const RenderResource mesh, const Mat4& matrix);
 void SetViewTransform(const Mat4& matrix);
 void SetProjectionTransform(const Mat4& matrix);
 

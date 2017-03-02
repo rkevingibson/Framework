@@ -91,6 +91,20 @@ typedef void (GLAPI DEBUGPROC)(GLenum source, GLenum type, GLuint id, GLenum sev
 #define GL_UNIFORM_BUFFER_SIZE            0x8A2A
 #define GL_COPY_READ_BUFFER               0x8F36
 #define GL_COPY_WRITE_BUFFER              0x8F37
+#define GL_UNIFORM_BLOCK_DATA_SIZE        0x8A40
+#define GL_UNIFORM_BLOCK_BINDING          0x8A3F
+#define GL_UNIFORM_BLOCK_NAME_LENGTH      0x8A41
+#define GL_UNIFORM_BLOCK_ACTIVE_UNIFORMS  0x8A42
+#define GL_UNIFORM_BLOCK_ACTIVE_UNIFORM_INDICES        0x8A43
+#define GL_UNIFORM_BLOCK_REFERENCED_BY_VERTEX_SHADER   0x8A44
+#define GL_UNIFORM_BLOCK_REFERENCED_BY_GEOMETRY_SHADER 0x8A45
+#define GL_UNIFORM_BLOCK_REFERENCED_BY_FRAGMENT_SHADER 0x8A46
+#define GL_UNIFORM_OFFSET                 0x8A3B
+#define GL_UNIFORM_ARRAY_STRIDE           0x8A3C
+#define GL_UNIFORM_MATRIX_STRIDE          0x8A3D
+#define GL_UNIFORM_TYPE                   0x8A37
+#define GL_UNIFORM_SIZE                   0x8A38
+#define GL_UNIFORM_NAME_LENGTH            0x8A39
 
 /*
 Define X-macro of opengl functions to load.
@@ -124,6 +138,10 @@ order is ret, name, args...
 	GLX(void, GetShaderiv, GLuint shader, GLenum param, GLint* params)\
 	GLX(void, GetShaderInfoLog, GLuint shader, GLsizei maxLength, GLsizei * length, GLchar* infoLog )\
 	GLX(void, DeleteProgram, GLuint program)\
+	GLX(GLuint, GetUniformBlockIndex, GLuint program, const GLchar* uniformBlockName)\
+	GLX(void, GetActiveUniformBlockiv, GLuint program, GLuint uniformBlockIndex, GLenum pname, GLint* params)\
+	GLX(void, GetActiveUniformsiv, GLuint program, GLsizei uniformCount, const GLuint* uniformIndices, GLenum pname, GLint* params)\
+	GLX(void, GetActiveUniformName, GLuint program, GLuint uniformIndex, GLsizei bufSize, GLsizei* length, GLchar* uniformName)\
 	/*Buffer functions*/ \
 	GLX(void, GenBuffers, GLsizei n, GLuint* buffers) \
 	GLX(void, BindBuffer, GLenum target, GLuint buffer) \
@@ -165,7 +183,7 @@ inline bool LoadGLFunctions()
 #define GLX(ret, name, ...) \
 		gl##name = (name##proc *) wglGetProcAddress("gl"#name); \
 		if (!gl##name) { \
-			OutputDebugStringA("OpenGl function gl" #name " couldn't be loaded."); \
+			OutputDebugStringA("OpenGl function gl" #name " couldn't be loaded.\n"); \
 			return false; \
 		}
 

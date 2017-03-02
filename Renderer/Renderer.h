@@ -194,6 +194,7 @@ ProgramHandle	CreateComputeProgram(const MemoryBlock* compute_shader);
 unsigned int	GetNumUniforms(ProgramHandle h); //NOTE: This function must be called a frame after the program was created.
 int	GetProgramUniforms(ProgramHandle h, UniformHandle* buffer, int size);
 void	GetUniformInfo(UniformHandle h, char* name, int name_size, UniformType* type);
+void GetUniformBlockInfo(ProgramHandle h, const char* block_name, render::PropertyBlock* block);
 #pragma endregion
 
 #pragma region Vertex Buffer Functions
@@ -223,7 +224,7 @@ UniformHandle	CreateUniform(const char* name, UniformType type);
 void SetUniform(UniformHandle handle, const void* data, int num = 1);
 
 BufferHandle CreateBufferObject(const MemoryBlock* data = nullptr);
-
+void UpdateBufferObject(BufferHandle handle, const MemoryBlock* data);
 
 //Because handles are all unique types, we can have nice overloading to keep things simple.
 //TODO: Right now these don't do anything.
