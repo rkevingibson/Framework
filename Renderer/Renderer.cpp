@@ -269,6 +269,12 @@ struct IndexBuffer
 	GLenum	type;
 };
 
+struct BufferObject
+{
+	GLuint buffer;
+	uint32_t size;
+};
+
 struct ShaderStorageBuffer
 {
 	GLuint buffer;
@@ -321,6 +327,16 @@ struct RenderCmd
 	GLuint ssbos[MAX_SSBO_BINDINGS];
 	GLuint atomic_counters[MAX_ATOMIC_COUNTER_BINDINGS];
 
+	struct BufferBinding
+	{
+		GLuint buffer_object;
+		GLenum target;
+		GLintptr offset;
+		GLsizeiptr size;
+	};
+
+	BufferBinding buffers[MAX_BUFFER_BINDINGS];
+
 	RenderCmd()
 	{
 		for (int i = 0; i < MAX_TEXTURE_UNITS; i++) {
@@ -333,6 +349,10 @@ struct RenderCmd
 
 		for (int i = 0; i < MAX_ATOMIC_COUNTER_BINDINGS; i++) {
 			atomic_counters[i] = UINT32_MAX;
+		}
+
+		for (int i = 0; i < MAX_BUFFER_BINDINGS; i++) {
+			buffers[i] = { UINT32_MAX, 0,0 };
 		}
 	}
 };
@@ -416,6 +436,7 @@ ResourceList<VertexBuffer, MAX_VERTEX_BUFFERS>   vertex_buffers;
 ResourceList<IndexBuffer, MAX_INDEX_BUFFERS>     index_buffers;
 ResourceList<ShaderStorageBuffer, MAX_SHADER_STORAGE_BUFFERS>     shader_storage_buffers;
 ResourceList<AtomicCounterBuffer, MAX_ATOMIC_COUNTER_BUFFERS> atomic_counter_buffers;
+ResourceList<BufferObject, MAX_BUFFER_OBJECTS>   buffer_objects;
 ResourceList<Texture, MAX_TEXTURES>              textures;
 ResourceList<Uniform, MAX_UNIFORMS>              uniforms;
 ResourceList<Program, MAX_SHADER_PROGRAMS>       programs;
@@ -824,7 +845,7 @@ UniformType UniformTypeFromEnum(GLenum e)
 ProgramHandle gl::CreateProgram(const MemoryBlock* vertex_shader, const MemoryBlock* frag_shader)
 {
 	auto program_handle = programs.Create();
-	
+
 	GLuint program;
 	program = glCreateProgram();
 
@@ -1077,43 +1098,43 @@ void gl::UpdateDynamicVertexBuffer(VertexBufferHandle handle, const MemoryBlock*
 
 namespace
 {
-	uint32_t CreateElementBuffer(GLenum usage, render::IndexType type, const MemoryBlock* block)
-	{
-		auto buffer = index_buffers.Create();
-		*buffer.obj = IndexBuffer{};
-		GLuint ib;
-		auto size = 0;
-		glGenBuffers(1, &ib);
-		if (block) {
-			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ib);
-			glBufferData(GL_ELEMENT_ARRAY_BUFFER, block->length, block->ptr, usage);
-			size = block->length;
-		}
-		buffer.obj->buffer = ib;
-
-		switch (type) {
-		case render::IndexType::UByte:
-			buffer.obj->type = GL_UNSIGNED_BYTE;
-			buffer.obj->num_elements = size;
-			break;
-		case render::IndexType::UShort:
-			buffer.obj->type = GL_UNSIGNED_SHORT;
-			buffer.obj->num_elements = size / 2;
-			break;
-		case render::IndexType::UInt:
-			buffer.obj->type = GL_UNSIGNED_INT;
-			buffer.obj->num_elements = size / 4;
-			break;
-		default:
-			break;
-		}
-
-		if (block) {
-			DeallocateBlock(block);
-		}
-
-		return buffer.index;
+uint32_t CreateElementBuffer(GLenum usage, render::IndexType type, const MemoryBlock* block)
+{
+	auto buffer = index_buffers.Create();
+	*buffer.obj = IndexBuffer{};
+	GLuint ib;
+	auto size = 0;
+	glGenBuffers(1, &ib);
+	if (block) {
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ib);
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, block->length, block->ptr, usage);
+		size = block->length;
 	}
+	buffer.obj->buffer = ib;
+
+	switch (type) {
+	case render::IndexType::UByte:
+		buffer.obj->type = GL_UNSIGNED_BYTE;
+		buffer.obj->num_elements = size;
+		break;
+	case render::IndexType::UShort:
+		buffer.obj->type = GL_UNSIGNED_SHORT;
+		buffer.obj->num_elements = size / 2;
+		break;
+	case render::IndexType::UInt:
+		buffer.obj->type = GL_UNSIGNED_INT;
+		buffer.obj->num_elements = size / 4;
+		break;
+	default:
+		break;
+	}
+
+	if (block) {
+		DeallocateBlock(block);
+	}
+
+	return buffer.index;
+}
 }
 
 IndexBufferHandle gl::CreateIndexBuffer(const MemoryBlock* data, render::IndexType type)
@@ -1179,48 +1200,22 @@ void gl::UpdateDynamicIndexBuffer(IndexBufferHandle handle, const MemoryBlock* d
 
 #pragma endregion
 
-#pragma region SSBO Functions
-
-SSBOHandle gl::CreateShaderStorageBuffer(const MemoryBlock* data)
-{
-	auto ssbo = shader_storage_buffers.Create();
-	SSBOHandle result{ ssbo.index };
-	ssbo.obj->size = data->length;
-	ssbo.obj->buffer = CreateBuffer(data, GL_SHADER_STORAGE_BUFFER, GL_DYNAMIC_DRAW);
-	return result;
-}
-
-void gl::UpdateShaderStorageBuffer(SSBOHandle handle, const MemoryBlock* data)
-{
-	auto& ssbo = shader_storage_buffers[handle.index];
-	UpdateDynamicBuffer(GL_SHADER_STORAGE_BUFFER, ssbo.buffer, data, &ssbo.size);
-}
-
-AtomicCounterBufferHandle gl::CreateAtomicCounterBuffer(const MemoryBlock * data)
-{
-	auto atomic_buffer = atomic_counter_buffers.Create();
-
-	AtomicCounterBufferHandle result{ atomic_buffer.index };
-	atomic_buffer.obj->size = data->length;
-	atomic_buffer.obj->buffer = CreateBuffer(data, GL_ATOMIC_COUNTER_BUFFER, GL_DYNAMIC_DRAW);
-	
-	return result;
-}
-
-void gl::UpdateAtomicCounterBuffer(AtomicCounterBufferHandle h, const MemoryBlock* data)
-{
-	auto& atomic_buffer = atomic_counter_buffers[h.index];
-	UpdateDynamicBuffer(GL_ATOMIC_COUNTER_BUFFER, atomic_buffer.buffer, data, &atomic_buffer.size);
-}
-
-#pragma endregion
-
 #pragma region Uniform Buffer Functions
 
-UniformBufferHandle gl::CreateUniformBuffer()
+BufferHandle gl::CreateBufferObject(const MemoryBlock* data)
 {
+	auto buffer = buffer_objects.Create();
+	BufferHandle result{ buffer.index };
+	if (data) {
+		buffer.obj->size = data->length;
+	} else {
+		buffer.obj->size = 0;
+	}
 
-	CreateBuffer(nullptr, GL_UNIFORM_BUFFER, GL_DYNAMIC_DRAW);
+	//TODO: Do i always want dynamic draw? How do I want to specify this?
+	buffer.obj->buffer = CreateBuffer(data, GL_COPY_WRITE_BUFFER, GL_DYNAMIC_DRAW);
+
+	return result;
 }
 
 #pragma region Texture Functions
@@ -1395,14 +1390,37 @@ void gl::SetTexture(TextureHandle tex, UniformHandle sampler, uint16_t texture_u
 	current_rendercmd.textures[texture_unit] = tex;
 }
 
-void gl::SetShaderStorageBuffer(SSBOHandle h, uint32_t binding)
+namespace
 {
-	current_rendercmd.ssbos[binding] = shader_storage_buffers[h.index].buffer;
+GLenum GetBufferTargetEnum(BufferTarget target)
+{
+	switch (target) {
+	case rkg::gl::BufferTarget::SHADER_STORAGE:
+		return GL_SHADER_STORAGE_BUFFER;
+		break;
+	case rkg::gl::BufferTarget::UNIFORM:
+		return GL_UNIFORM_BUFFER;
+		break;
+	case rkg::gl::BufferTarget::ATOMIC_COUNTER:
+		return GL_ATOMIC_COUNTER_BUFFER;
+		break;
+	default:
+		ASSERT(false);
+		break;
+	}
+	return 0;
+}
 }
 
-void gl::SetAtomicCounterBuffer(AtomicCounterBufferHandle h, uint32_t binding)
+void gl::SetBufferObject(BufferHandle h, BufferTarget target, uint32_t binding)
 {
-	current_rendercmd.atomic_counters[binding] = atomic_counter_buffers[h.index].buffer;
+	Expects(binding < MAX_BUFFER_BINDINGS);
+	RenderCmd::BufferBinding bind;
+	bind.buffer_object = buffer_objects[h.index].buffer;
+	bind.offset = 0;
+	bind.size = buffer_objects[h.index].size;
+	bind.target = GetBufferTargetEnum(target);
+	current_rendercmd.buffers[binding] = std::move(bind);
 }
 
 void gl::SetScissor(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
@@ -1543,19 +1561,10 @@ void gl::Render()
 			}
 		}
 
-		//Bind any SSBOs:
-		for (int ssbo_binding = 0; ssbo_binding < MAX_SSBO_BINDINGS; ssbo_binding++) {
-			if (cmd->ssbos[ssbo_binding] != UINT32_MAX) {
-				glBindBufferBase(GL_SHADER_STORAGE_BUFFER,
-								 ssbo_binding,
-								 cmd->ssbos[ssbo_binding]);
-			}
-		}
-
-		//Bind any atomic counters. May be able to unify the buffer bindings.
-		for (int binding = 0; binding < MAX_ATOMIC_COUNTER_BINDINGS; binding++) {
-			if (cmd->atomic_counters[binding] != UINT32_MAX) {
-				glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, binding, cmd->atomic_counters[binding]);
+		for (int binding = 0; binding < MAX_BUFFER_BINDINGS; binding++) {
+			if (cmd->buffers[binding].buffer_object != UINT32_MAX) {
+				auto& buffer = cmd->buffers[binding];
+				glBindBufferRange(buffer.target, binding, buffer.buffer_object, buffer.offset, buffer.size);
 			}
 		}
 
@@ -1714,14 +1723,14 @@ void gl::Render()
 						t - type
 						s - number
 						*/
-						
+
 						auto count = vertex_layout.counts[i];
 						uint8_t attrib_loc = (count & 0b0111'1100) >> 2;
 						bool normalized = (count & 0b1000'0000) >> 7;
 						GLuint size = (count & 0b0000'0011) + 1;
-						glVertexAttribPointer(attrib_loc, size, 
-											  GetGLEnum(vertex_layout.types[i]), normalized, 
-											  (vertex_layout.interleaved) ? vertex_size : 0, 
+						glVertexAttribPointer(attrib_loc, size,
+											  GetGLEnum(vertex_layout.types[i]), normalized,
+											  (vertex_layout.interleaved) ? vertex_size : 0,
 											  (GLvoid*)attrib_offset);
 						glEnableVertexAttribArray(attrib_loc);
 						if (vertex_layout.interleaved) {
@@ -1755,7 +1764,7 @@ void gl::Render()
 			if (draw_cmd->index_count != UINT32_MAX) {
 				num_elements = draw_cmd->index_count;
 			}
-			
+
 			glDrawElementsBaseVertex(primitive_type, num_elements,
 									 ib.type,
 									 (void*)offset,
@@ -1777,7 +1786,7 @@ void gl::Render()
 	uniform_buffer.Clear();
 	FreeMemory();
 	current_rendercmd.uniform_start = 0;
-	
+
 }
 
 void gl::InitializeBackend(GLFWwindow* window)

@@ -30,10 +30,8 @@ RENDER_HANDLE(VertexBufferHandle);
 RENDER_HANDLE(IndexBufferHandle);
 RENDER_HANDLE(ProgramHandle);
 RENDER_HANDLE(UniformHandle);
-RENDER_HANDLE(AtomicCounterBufferHandle);
-RENDER_HANDLE(SSBOHandle);
 RENDER_HANDLE(TextureHandle);
-RENDER_HANDLE(UniformBufferHandle);
+RENDER_HANDLE(BufferHandle);
 
 constexpr uint32_t INVALID_HANDLE = std::numeric_limits<uint32_t>::max();
 
@@ -46,6 +44,8 @@ constexpr uint32_t MAX_SHADER_STORAGE_BUFFERS = 64;
 constexpr uint32_t MAX_ATOMIC_COUNTER_BUFFERS = 64;
 constexpr uint32_t MAX_SSBO_BINDINGS = 8;
 constexpr uint32_t MAX_ATOMIC_COUNTER_BINDINGS = 8;
+constexpr uint32_t MAX_BUFFER_OBJECTS = 512;
+constexpr uint32_t MAX_BUFFER_BINDINGS = 16;
 constexpr uint32_t MAX_TEXTURES = 1024;
 constexpr uint32_t MAX_TEXTURE_UNITS = 16;
 constexpr uint32_t MAX_UNIFORMS = 256;
@@ -157,6 +157,13 @@ enum class TextureFormat
 	RGBA8,
 };
 
+enum class BufferTarget
+{
+	SHADER_STORAGE,
+	UNIFORM,
+	ATOMIC_COUNTER,
+};
+
 using ErrorCallbackFn = void(*)(const char* msg);
 
 void InitializeBackend(GLFWwindow* window);
@@ -204,14 +211,6 @@ IndexBufferHandle	CreateDynamicIndexBuffer(render::IndexType type);
 void	UpdateDynamicIndexBuffer(IndexBufferHandle handle, const MemoryBlock* data, const ptrdiff_t offset = 0);
 #pragma endregion
 
-#pragma region Misc Buffer Functions
-SSBOHandle	CreateShaderStorageBuffer(const MemoryBlock* data);
-void	UpdateShaderStorageBuffer(SSBOHandle handle, const MemoryBlock* data);
-AtomicCounterBufferHandle	CreateAtomicCounterBuffer(const MemoryBlock* data);
-void	UpdateAtomicCounterBuffer(AtomicCounterBufferHandle handle, const MemoryBlock* data);
-
-#pragma endregion
-
 #pragma region Texture Functions
 TextureHandle CreateTexture2D(uint16_t width, uint16_t height, TextureFormat format, const MemoryBlock* data = nullptr);
 void UpdateTexture2D(TextureHandle handle, const MemoryBlock* data);
@@ -223,7 +222,7 @@ UniformHandle	CreateUniform(const char* name, UniformType type);
 //Sets uniforms - these will be set on the program of whatever the next submit call is on the calling thread.
 void SetUniform(UniformHandle handle, const void* data, int num = 1);
 
-UniformBufferHandle CreateUniformBuffer();
+BufferHandle CreateBufferObject(const MemoryBlock* data = nullptr);
 
 
 //Because handles are all unique types, we can have nice overloading to keep things simple.
@@ -242,9 +241,11 @@ void SetVertexBuffer(VertexBufferHandle h, uint32_t first_vertex = 0, uint32_t n
 void SetIndexBuffer(IndexBufferHandle h, uint32_t first_element = 0, uint32_t num_elements = UINT32_MAX);
 
 void SetTexture(TextureHandle tex, UniformHandle sampler, uint16_t texture_unit);
-void SetShaderStorageBuffer(SSBOHandle h, uint32_t binding);
-void SetAtomicCounterBuffer(AtomicCounterBufferHandle h, uint32_t binding);
+void SetBufferObject(BufferHandle h, BufferTarget target, uint32_t binding);
+
 void SetScissor(uint32_t x, uint32_t y, uint32_t w, uint32_t h);
+
+
 
 //Submit a draw call using the currently bound buffers.
 void Submit(uint8_t layer, ProgramHandle program, uint32_t depth = 0, bool preserve_state = false);

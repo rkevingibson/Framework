@@ -26,7 +26,11 @@ struct RenderGeometry
 struct RenderMaterial
 {
 	//TODO: Materials!
+	//Eventually, support multi-pass rendering through data driven materials.
+	//For now, just a default PBR-like material.
 
+
+	gl::BufferHandle uniform_buffer;
 	gl::ProgramHandle program;
 };
 
@@ -36,6 +40,16 @@ struct RenderMesh
 	RenderResource material;
 
 	//Basic mesh stuff - model transform, etc.
+	struct MeshUniforms
+	{
+		Mat4 M;
+		Mat4 V;
+		Mat4 MV;
+		Mat4 MVP;
+	};
+
+	Mat4 model_transform;
+	gl::BufferHandle uniform_buffer;
 };
 
 template<typename T>
@@ -54,7 +68,7 @@ private:
 	HashIndex hash_index_;
 	std::vector<Pair> data_;
 	std::atomic<uint32_t> next_id_{ 0 };
-
+	constexpr static uint64_t INDEX_MASK = 0x0000'0000'FFFF'FFFFu;
 public:
 
 	
@@ -75,7 +89,7 @@ public:
 	{
 		uint32_t key = id & INDEX_MASK;
 		uint32_t index = (uint32_t)data_.size();
-		data_.emplace_back(T{}, key);
+		data_.emplace_back(Pair{ T{}, key });
 
 
 		hash_index_.Add(key, index);
@@ -85,7 +99,6 @@ public:
 	/*Do the hash lookup*/
 	T& operator[](RenderResource id)
 	{
-		constexpr uint64_t INDEX_MASK = 0x0000'0000'FFFF'FFFFu;
 		uint32_t key = id & INDEX_MASK; 
 		uint32_t num_components = data_.size();
 		for (uint32_t i = hash_index_.First(key);
@@ -102,24 +115,21 @@ public:
 
 
 	friend Pair* begin(ResourceContainer& c) {
-		return c.data_.begin();
+		return c.data_.data();
 	}
 
-	friend Pair* begin(const ResourceContainer& c) {
-		return c.data_.cbegin();
+	friend const Pair* begin(const ResourceContainer& c) {
+		return c.data_.data();
 	}
 
 	friend Pair* end(ResourceContainer& c) {
-		return c.data_.end();
+		return c.data_.data() + c.data_.size();
 	}
 
-	friend Pair* end(const ResourceContainer& c) {
-		return c.data_.cend();
+	friend const Pair* end(const ResourceContainer& c) {
+		return c.data_.data() + c.data_.size();
 	}
 };
-
-
-
 
 render::RenderResource CreateHandle(uint32_t index, render::ResourceType type)
 {
@@ -127,12 +137,13 @@ render::RenderResource CreateHandle(uint32_t index, render::ResourceType type)
 	return (index & INDEX_MASK) | (static_cast<uint64_t>(type) << 56);
 }
 
-
 std::atomic_flag render_fence{ ATOMIC_FLAG_INIT };
 std::atomic_flag game_fence{ ATOMIC_FLAG_INIT };
 CommandStream render_commands;
 
-//TODO: Replace these with thread-safe containers.
+Mat4 view_matrix;
+Mat4 projection_matrix;
+
 ResourceContainer<RenderGeometry> geometries;
 ResourceContainer<RenderMesh> meshes;
 ResourceContainer<RenderMaterial> materials;
@@ -153,6 +164,7 @@ void RenderLoop(GLFWwindow* window)
 		//Other rendering happens here. All calls to the render backend occur here.
 
 		for (auto& pair : meshes) {
+			auto& mesh = pair.resource;
 			auto& geom = geometries[pair.resource.geometry];
 			auto& material = materials[pair.resource.material];
 			//Draw this geometry.
@@ -161,7 +173,10 @@ void RenderLoop(GLFWwindow* window)
 			gl::SetIndexBuffer(geom.index_buffer);
 
 			//Set any uniforms.
-
+			
+			
+			gl::SetBufferObject(mesh.uniform_buffer, gl::BufferTarget::UNIFORM, 0);
+			gl::SetBufferObject(material.uniform_buffer, gl::BufferTarget::UNIFORM, 1);
 			gl::Submit(0, material.program);
 		}
 
@@ -270,6 +285,7 @@ RenderResource CreateMesh(const RenderResource geometry, const RenderResource ma
 		auto mesh = meshes.Add(data->mesh);
 		mesh->geometry = data->geometry;
 		mesh->material = data->material;
+		mesh->uniform_buffer = gl::CreateBufferObject();
 	};
 
 	return cmd->mesh;
@@ -290,13 +306,43 @@ RenderResource CreateMaterial(const MemoryBlock* vertex_shader, const MemoryBloc
 	cmd->mat = CreateHandle(materials.ReserveIndex(), ResourceType::MATERIAL);
 	cmd->dispatch = [](Cmd* cmd) {
 		auto data = reinterpret_cast<CmdType*>(cmd);
-
 		auto material = materials.Add(data->mat);
+		material->uniform_buffer = gl::CreateBufferObject();
 		material->program = gl::CreateProgram(data->vert_shader, data->frag_shader);
 	};
 
 	return cmd->mat;
 }
+
+void SetViewTransform(const Mat4& matrix)
+{
+	struct CmdType : Cmd
+	{
+		Mat4 mat;
+	};
+	auto cmd = render_commands.Add<CmdType>();
+	cmd->mat = matrix;
+	cmd->dispatch = [](Cmd* cmd) {
+		auto data = reinterpret_cast<CmdType*>(cmd);
+		view_matrix = data->mat;
+	};
+
+}
+
+void SetProjectionTransform(const Mat4& matrix)
+{
+	struct CmdType : Cmd
+	{
+		Mat4 mat;
+	};
+	auto cmd = render_commands.Add<CmdType>();
+	cmd->mat = matrix;
+	cmd->dispatch = [](Cmd* cmd) {
+		auto data = reinterpret_cast<CmdType*>(cmd);
+		projection_matrix = data->mat;
+	};
+}
+
 
 void EndFrame()
 {

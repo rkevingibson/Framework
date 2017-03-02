@@ -89,6 +89,8 @@ typedef void (GLAPI DEBUGPROC)(GLenum source, GLenum type, GLuint id, GLenum sev
 #define GL_UNIFORM_BUFFER_BINDING         0x8A28
 #define GL_UNIFORM_BUFFER_START           0x8A29
 #define GL_UNIFORM_BUFFER_SIZE            0x8A2A
+#define GL_COPY_READ_BUFFER               0x8F36
+#define GL_COPY_WRITE_BUFFER              0x8F37
 
 /*
 Define X-macro of opengl functions to load.
@@ -131,6 +133,7 @@ order is ret, name, args...
 	GLX(void, GenVertexArrays, GLuint n, GLuint* vaos) \
 	GLX(void, DeleteBuffers, GLuint n, GLuint* buffers) \
 	GLX(void, BindBufferBase, GLenum target, GLuint index, GLuint buffer) \
+	GLX(void, BindBufferRange, GLenum target, GLuint index, GLuint buffer, GLintptr offset, GLsizeiptr size)\
 	/*Misc functions*/ \
 	GLX(void, BlendEquation, GLenum eq) \
 	GLX(void, ActiveTexture, GLenum texture) \

@@ -160,6 +160,9 @@ RenderResource CreateMesh(const RenderResource  geometry, const RenderResource m
 RenderResource CreateMaterial(const MemoryBlock* vertex_shader, const MemoryBlock* frag_shader);
 
 
+void SetViewTransform(const Mat4& matrix);
+void SetProjectionTransform(const Mat4& matrix);
+
 void EndFrame();
 
 //
