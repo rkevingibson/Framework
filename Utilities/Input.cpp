@@ -1,8 +1,13 @@
 #include "Input.h"
-
 #include "Utilities.h"
-using namespace rkg;
 
+
+
+#include <vector>
+#include <utility>
+
+namespace rkg 
+{
 bool Input::MouseButton[3]{ false, false, false };
 bool Input::MouseButtonPressed[3]{ false, false,false };
 bool Input::MouseButtonReleased[3]{ false, false, false };
@@ -30,8 +35,9 @@ void Input::SetKeyStatus(Keyname key, KeyAction action)
 {
 	Expects(key < Keyname::NUM_KEYNAMES);
 	if (action == KeyAction::PRESSED) {
-		key_status[static_cast<int>(key)] |= 0b011; 
-	} else if(action == KeyAction::RELEASED) {
+		key_status[static_cast<int>(key)] |= 0b011;
+	}
+	else if (action == KeyAction::RELEASED) {
 		key_status[static_cast<int>(key)] |= 0b100;
 		key_status[static_cast<int>(key)] &= 0b110;
 	}
@@ -54,4 +60,36 @@ bool Input::GetKeyUp(Keyname key)
 {
 	Expects(key < Keyname::NUM_KEYNAMES);
 	return ((key_status[static_cast<int>(key)] & 0b100) == 0b100);
+}
+
+
+
+namespace
+{
+struct ResizeCallbackStruct {
+	Input::ResizeCallback fn;
+	void* data{ nullptr };
+};
+
+std::vector<ResizeCallbackStruct> callbacks;
+
+}
+
+
+void Input::RegisterResizeCallback(ResizeCallback callback, void * user_data)
+{
+	ResizeCallbackStruct s;
+	s.fn = callback;
+	s.data = user_data;
+	callbacks.emplace_back(std::move(s));
+}
+
+void Input::ResizeScreen(int w, int h)
+{
+	rkg::Input::ScreenSize = { (float)w, (float)h };
+	for (auto& c : callbacks) {
+		c.fn(w, h, c.data);
+	}
+}
+
 }

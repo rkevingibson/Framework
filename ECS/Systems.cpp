@@ -28,7 +28,8 @@ namespace ecs {
 
 		void ResizeCallback(GLFWwindow* win, int w, int h)
 		{
-			rkg::Input::ScreenSize = { (float)w, (float)h };
+			
+			rkg::Input::ResizeScreen(w, h);
 			rkg::render::ResizeWindow(w, h);
 		}
 
