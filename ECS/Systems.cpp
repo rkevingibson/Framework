@@ -138,7 +138,7 @@ namespace ecs {
 		running = true;
 		double current_time = glfwGetTime();
 		double accumulator = 0.0;
-		const double fixed_timestep = 0.01;
+		const double fixed_timestep = 0.05;
 
 		while (!glfwWindowShouldClose(window) && running)
 		{

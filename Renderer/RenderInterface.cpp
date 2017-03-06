@@ -308,7 +308,9 @@ void UpdateGeometry(const RenderResource geometry_handle, const MemoryBlock * ve
 		auto data = reinterpret_cast<CmdType*>(cmd);
 		auto& geom = geometries[data->geometry];
 		gl::UpdateDynamicVertexBuffer(geom.vertex_buffer, data->vertex_data);
-		gl::UpdateDynamicIndexBuffer(geom.index_buffer, data->index_data);
+		if (data->index_data) {
+			gl::UpdateDynamicIndexBuffer(geom.index_buffer, data->index_data);
+		}
 	};
 }
 
