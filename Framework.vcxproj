@@ -125,6 +125,7 @@
     <ClCompile Include="external\imgui\imgui_draw.cpp" />
     <ClCompile Include="external\rply\rply.c" />
     <ClCompile Include="renderer\ArcballCamera.cpp" />
+    <ClCompile Include="Renderer\Mesh.cpp" />
     <ClCompile Include="renderer\Renderer.cpp" />
     <ClCompile Include="renderer\RenderInterface.cpp" />
     <ClCompile Include="utilities\Allocators.cpp" />
@@ -423,6 +424,7 @@
     <ClInclude Include="external\rply\rplyfile.h" />
     <ClInclude Include="renderer\ArcballCamera.h" />
     <ClInclude Include="renderer\GLLite.h" />
+    <ClInclude Include="Renderer\Mesh.h" />
     <ClInclude Include="renderer\Renderer.h" />
     <ClInclude Include="renderer\RenderInterface.h" />
     <ClInclude Include="utilities\Allocators.h" />
