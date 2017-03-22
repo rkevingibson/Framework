@@ -423,6 +423,7 @@
     <ClInclude Include="external\rply\rply.h" />
     <ClInclude Include="external\rply\rplyfile.h" />
     <ClInclude Include="renderer\ArcballCamera.h" />
+    <ClInclude Include="Renderer\FrameGraph.h" />
     <ClInclude Include="renderer\GLLite.h" />
     <ClInclude Include="Renderer\Mesh.h" />
     <ClInclude Include="renderer\Renderer.h" />
