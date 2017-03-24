@@ -1,4 +1,5 @@
 #include "RenderInterface.h"
+#include "FrameGraph.h"
 #include "Utilities/CommandStream.h"
 #include "Utilities/HashIndex.h"
 #include "External/GLFW/glfw3.h"
@@ -53,7 +54,7 @@ struct RenderMesh
 template<typename T>
 class ResourceContainer
 {
-public: 
+public:
 	struct Pair
 	{
 		T resource;
@@ -61,7 +62,7 @@ public:
 	};
 
 private:
-	
+
 
 	HashIndex hash_index_;
 	std::vector<Pair> data_;
@@ -69,7 +70,7 @@ private:
 	constexpr static uint64_t INDEX_MASK = 0x0000'0000'FFFF'FFFFu;
 public:
 
-	
+
 	ResourceContainer() = default;
 
 	/*
@@ -114,13 +115,13 @@ public:
 			}
 		}
 
-		
+
 	}
 
 	/*Do the hash lookup*/
 	T& operator[](RenderResource id)
 	{
-		uint32_t key = id & INDEX_MASK; 
+		uint32_t key = id & INDEX_MASK;
 		uint32_t num_components = data_.size();
 		for (uint32_t i = hash_index_.First(key);
 			 i != HashIndex::INVALID_INDEX && i < num_components;
@@ -129,25 +130,29 @@ public:
 				return data_[i].resource;
 			}
 		}
-		
+
 		Ensures(false && "This should never happen!");
 		return T{};
 	}
 
 
-	friend Pair* begin(ResourceContainer& c) {
+	friend Pair* begin(ResourceContainer& c)
+	{
 		return c.data_.data();
 	}
 
-	friend const Pair* begin(const ResourceContainer& c) {
+	friend const Pair* begin(const ResourceContainer& c)
+	{
 		return c.data_.data();
 	}
 
-	friend Pair* end(ResourceContainer& c) {
+	friend Pair* end(ResourceContainer& c)
+	{
 		return c.data_.data() + c.data_.size();
 	}
 
-	friend const Pair* end(const ResourceContainer& c) {
+	friend const Pair* end(const ResourceContainer& c)
+	{
 		return c.data_.data() + c.data_.size();
 	}
 };
@@ -170,33 +175,20 @@ ResourceContainer<RenderGeometry> geometries;
 ResourceContainer<RenderMesh> meshes;
 ResourceContainer<RenderMaterial> materials;
 
-
-void RenderLoop(GLFWwindow* window)
+void AddForwardPass(FrameGraph& graph)
 {
-	gl::InitializeBackend(window);
-	while (true) {
-		while (render_fence.test_and_set(std::memory_order_acquire)) {
-			std::this_thread::yield();
-		} //Spin while this flag hasn't been set by the other thread.
-		render_commands.SwapBuffers(); //Need to signal to the other threads that they can now make render calls.
-		postrender_commands.SwapBuffers();
-		game_fence.clear();
+	//Simple example which just draws meshes to the 
+	struct PassData
+	{
 
-		//Update our state by pumping the command list. This syncs state between the game + render threads.
-		render_commands.ExecuteAll();
+	};
+	graph.AddCallbackPass<PassData>(
+		"ForwardPass",
+		[&](PassData& data) {
+		//Setup any buffers we need here.
+	},
+		[=](const PassData& data) {
 
-		
-		//Update all materials that have been changed.
-		for (auto& pair : materials) {
-			auto& mat = pair.resource;
-			if (mat.block.dirty) {
-				auto ref = gl::MakeRef(mat.block.buffer.get(), mat.block.buffer_size);
-				gl::UpdateBufferObject(mat.uniform_buffer, ref);
-			}
-		}
-
-		//Draw all the meshes.
-		//TODO: Culling.
 		for (auto& pair : meshes) {
 			auto& mesh = pair.resource;
 			auto& geom = geometries[pair.resource.geometry];
@@ -214,11 +206,49 @@ void RenderLoop(GLFWwindow* window)
 			gl::SetVertexBuffer(geom.vertex_buffer);
 			gl::SetIndexBuffer(geom.index_buffer);
 			//Set any uniforms.
-			
+
 			gl::SetBufferObject(mesh.uniform_buffer, gl::BufferTarget::UNIFORM, 0);
 			gl::SetBufferObject(material.uniform_buffer, gl::BufferTarget::UNIFORM, 1);
 			gl::Submit(0, material.program);
 		}
+	});
+}
+
+
+void RenderLoop(GLFWwindow* window)
+{
+	gl::InitializeBackend(window);
+
+	//Set up framegraph in here.
+	FrameGraph frame_graph;
+	AddForwardPass(frame_graph);
+
+
+	while (true) {
+		while (render_fence.test_and_set(std::memory_order_acquire)) {
+			std::this_thread::yield();
+		} //Spin while this flag hasn't been set by the other thread.
+		render_commands.SwapBuffers(); //Need to signal to the other threads that they can now make render calls.
+		postrender_commands.SwapBuffers();
+		game_fence.clear();
+
+		//Update our state by pumping the command list. This syncs state between the game + render threads.
+		render_commands.ExecuteAll();
+
+
+		//Update all materials that have been changed.
+		for (auto& pair : materials) {
+			auto& mat = pair.resource;
+			if (mat.block.dirty) {
+				auto ref = gl::MakeRef(mat.block.buffer.get(), mat.block.buffer_size);
+				gl::UpdateBufferObject(mat.uniform_buffer, ref);
+			}
+		}
+
+		//Draw all the meshes.
+		//TODO: Culling.
+
+		frame_graph.Execute();
 
 
 		gl::Render();
@@ -233,7 +263,7 @@ void RenderLoop(GLFWwindow* window)
 
 void Initialize(GLFWwindow* window)
 {
-	//Spawn thread and 
+	//Spawn thread and that's about it.
 	glfwMakeContextCurrent(nullptr);
 	std::thread render_thread(RenderLoop, window);
 	render_thread.detach();
@@ -257,7 +287,7 @@ void ResizeWindow(int w, int h)
 
 RenderResource CreateGeometry(const MemoryBlock * vertex_data, const VertexLayout & layout, const MemoryBlock * index_data, IndexType type)
 {
-	
+
 	struct CmdType : Cmd
 	{
 		const MemoryBlock* vertex_data;
@@ -570,7 +600,7 @@ void InitImguiRendering(const MemoryBlock* font_data, int width, int height)
 		imgui.index_buffer = gl::CreateDynamicIndexBuffer(IndexType::UShort);
 	};
 
-	
+
 }
 
 void UpdateImguiData(const MemoryBlock* vertex_data, const MemoryBlock* index_data, const Vec2& size)
@@ -592,7 +622,7 @@ void UpdateImguiData(const MemoryBlock* vertex_data, const MemoryBlock* index_da
 		imgui.display_size = data->display_size;
 	};
 
-	
+
 }
 
 void DrawImguiCmd(uint32_t vertex_offset, uint32_t index_offset, uint32_t index_count, uint32_t scissor_x, uint32_t scissor_y, uint32_t scissor_w, uint32_t scissor_h)

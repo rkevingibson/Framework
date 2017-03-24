@@ -20,6 +20,8 @@ class Mesh
 public:
 
 	Mesh() = default;
+	Mesh(const Mesh&) = delete;
+	Mesh& operator=(const Mesh&) = delete;
 	Mesh(Mesh&&) = default;
 	Mesh& operator=(Mesh&&) = default;
 
@@ -70,6 +72,17 @@ public:
 		return Eigen::Map<Eigen::Matrix<unsigned int, 3, Eigen::Dynamic>>((unsigned int*)index_block_.ptr, 3, num_indices_ / 3);
 	}
 	void ComputeNormals();
+
+	inline Vec3 ComputeCentroid()
+	{
+		Vec3 centroid(0,0,0);
+		for (int i = 0; i < num_verts_; i++) {
+			centroid += Positions()[i];
+		}
+		centroid /= num_verts_;
+		return centroid;
+	}
+
 private:
 	
 
@@ -81,6 +94,7 @@ private:
 
 
 	friend Mesh LoadPLY(const char* filename);
+	friend Mesh LoadOBJ(const char* filename);
 
 	friend Mesh MakeSquare(int num_div_x, int num_div_y);
 };

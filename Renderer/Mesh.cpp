@@ -7,6 +7,11 @@
 #include <Utilities/Allocators.h>
 #include <External/rply/rply.h>
 
+#define TINYOBJLOADER_IMPLEMENTATION
+#include <External/tinyobj/tiny_obj_loader.h>
+#include <vector>
+#include <string>
+#include <algorithm>
 
 namespace rkg
 {
@@ -42,7 +47,10 @@ void Mesh::ComputeNormals()
 		const float thetaA = std::acosf(Dot(AB, AC) / (AB.Length()*AC.Length()));
 		const float thetaB = std::acosf(-Dot(AB, BC) / (AB.Length()*BC.Length()));
 		const float thetaC = M_PI - thetaA - thetaB;
-		ASSERT(thetaA >= 0 && thetaB >= 0 && thetaC >= 0);
+
+		Clamp(thetaA, 0, M_PI);
+		Clamp(thetaB, 0, M_PI);
+		Clamp(thetaC, 0, M_PI);
 
 		Vec3& normA = Normals()[indices[i]];
 		Vec3& normB = Normals()[indices[i + 1]];
@@ -131,6 +139,61 @@ Mesh LoadPLY(const char* filename)
 	return mesh;
 }
 
+Mesh LoadOBJ(const char* filename)
+{
+	tinyobj::attrib_t attrib;
+	std::vector<tinyobj::shape_t> shapes;
+	std::vector<tinyobj::material_t> materials;
+
+	std::string err;
+	tinyobj::LoadObj(&attrib, &shapes, &materials, &err, filename, nullptr, true);
+	//Want to separate out these meshes...
+
+	Mesh result;
+	Mallocator allocator;
+
+
+
+	result.vertex_block_ = allocator.Allocate(2 * attrib.vertices.size() * sizeof(float)); //Allocate for verts + normals. Still no texture support.
+	ASSERT(result.vertex_block_.ptr && "OUT OF MEMORY.");
+	result.num_verts_ = attrib.vertices.size() / 3;
+	//Copy the vertex data. normal data has to be copied seperately, since it may be in a different order.
+	memcpy(result.vertex_block_.ptr, attrib.vertices.data(), attrib.vertices.size() * sizeof(float));
+
+
+	uint32_t num_indices = 0;
+	for (auto& shape : shapes) {
+		num_indices += shape.mesh.indices.size();
+	}
+	result.num_indices_ = num_indices;
+
+	result.index_block_ = allocator.Allocate(num_indices * sizeof(unsigned int));
+	uint32_t index_offset = 0;
+
+	auto normals = result.Normals();
+	auto indices = result.Indices();
+	bool has_normals = false;
+	for (auto& shape : shapes) {
+		auto& mesh_indices = shape.mesh.indices;
+		for (auto& index : mesh_indices) {
+			if (index.normal_index != -1) {
+				has_normals = true;
+				normals[index.vertex_index] = Vec3(attrib.normals[3 * index.normal_index + 0],
+												   attrib.normals[3 * index.normal_index + 1],
+												   attrib.normals[3 * index.normal_index + 2]);
+			}
+			indices[index_offset] = index.vertex_index;
+			index_offset++;
+		}
+	}
+
+	if (!has_normals) {
+		result.ComputeNormals();
+	}
+
+	return result;
+}
+
 Mesh MakeSquare(int num_div_x, int num_div_y)
 {
 	Mesh mesh;
@@ -154,11 +217,11 @@ Mesh MakeSquare(int num_div_x, int num_div_y)
 			mesh.Indices()[index++] = i;
 			mesh.Indices()[index++] = i + num_div_x;
 			mesh.Indices()[index++] = i + 1;
-			
+
 			mesh.Indices()[index++] = i + 1;
 			mesh.Indices()[index++] = i + num_div_x;
 			mesh.Indices()[index++] = i + num_div_x + 1;
-			
+
 
 		}
 	}

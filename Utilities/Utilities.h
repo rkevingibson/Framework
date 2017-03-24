@@ -116,6 +116,11 @@ constexpr inline unsigned int Max(unsigned int a, unsigned int b)
 	return (a > b) ? a : b;
 }
 
+constexpr inline float Clamp(float x, float a, float b)
+{
+	return (x < a) ? a : ((x > b) ? b : x);
+}
+
 //A couple compile-time hash functions that work on strings literals. Great for IDs!
 constexpr uint32_t hash32_val_const = 0x811c9dc5;
 constexpr uint32_t hash32_prime_const = 0x1000193;
