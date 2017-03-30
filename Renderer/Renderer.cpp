@@ -1422,6 +1422,12 @@ void gl::Destroy(UniformHandle h)
 	uniforms.Remove(h.index);
 }
 
+void gl::Destroy(BufferHandle h)
+{
+	glDeleteBuffers(1, &buffer_objects[h.index].buffer);
+	buffer_objects.Remove(h.index);
+}
+
 #pragma endregion
 
 void gl::SetState(uint64_t flags)

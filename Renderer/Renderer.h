@@ -233,6 +233,7 @@ void	Destroy(VertexBufferHandle);
 void	Destroy(IndexBufferHandle);
 void	Destroy(TextureHandle);
 void	Destroy(UniformHandle);
+void	Destroy(BufferHandle);
 //TODO: None of these are implemented yet. 
 
 //Set state for the next draw call on this thread - thread local. 

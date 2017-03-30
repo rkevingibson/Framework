@@ -400,6 +400,8 @@ void DeleteMesh(const RenderResource mesh)
 	cmd->mesh = mesh;
 	cmd->dispatch = [](Cmd* cmd) {
 		auto data = reinterpret_cast<CmdType*>(cmd);
+		auto& mesh = meshes[data->mesh];
+		gl::Destroy(mesh.uniform_buffer);
 		meshes.Remove(data->mesh);
 	};
 }
