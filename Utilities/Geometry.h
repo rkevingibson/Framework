@@ -1,9 +1,9 @@
 #pragma once
 #include <algorithm>
 
+
 namespace rkg {
 	//Includes some basic geometric primitives - vectors, matrices. All fixed size here.
-
 	struct Vec2 {
 		float x, y;
 
@@ -349,6 +349,23 @@ namespace rkg {
 		inline void SetZero()
 		{
 			memset(data, 0, sizeof(data));
+		}
+
+		inline void SetScale(float x, float y, float z)
+		{
+			for (int i = 0; i < 3; i++) {
+				data[4 * i] *= x;
+				data[4 * i + 1] *= y;
+				data[4 * i + 2] *= z;
+			}
+		}
+
+		inline void SetTranslation(const Vec3& t)
+		{
+			data[12] = t.x;
+			data[13] = t.y;
+			data[14] = t.z;
+			data[15] = 1;
 		}
 
 		inline float& operator()(unsigned int row, unsigned int col)
