@@ -344,6 +344,7 @@ void UpdateGeometry(const RenderResource geometry_handle, const MemoryBlock * ve
 	};
 }
 
+
 void DeleteGeometry(RenderResource geometry)
 {
 	Expects(GetResourceType(geometry) == ResourceType::GEOMETRY);

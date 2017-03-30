@@ -1,6 +1,9 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
+#include <array>
+
 #include <Utilities/Utilities.h>
 #include <Utilities/Geometry.h>
 #include <Renderer/RenderInterface.h>
@@ -15,6 +18,31 @@ namespace rkg
 	Can get Face and Vertex matrices as Eigen maps, as well as
 */
 
+struct MeshAttributes 
+{
+	enum Enum : uint16_t
+	{
+	//These are Vec3 attributes
+		POSITION = 0b0000'0000'0001,
+		NORMAL = 0b0000'0000'0010,
+		TANGENT = 0b0000'0000'0100,
+		BITANGENT = 0b0000'0000'1000,
+
+		//These are Vec4 attributes.
+		COLOR0 = 0b0000'0001'0000,
+		COLOR1 = 0b0000'0010'0000,
+		INDEX = 0b0000'0100'0000,
+		WEIGHT = 0b0000'1000'0000,
+
+		//Texcoords are Vec2 attributes.
+		TEXCOORD0 = 0b0001'0000'0000,
+		TEXCOORD1 = 0b0010'0000'0000,
+		TEXCOORD2 = 0b0100'0000'0000,
+
+		COUNT = 11,
+	};
+};
+
 class Mesh
 {
 public:
@@ -22,24 +50,38 @@ public:
 	Mesh() = default;
 	Mesh(const Mesh&) = delete;
 	Mesh& operator=(const Mesh&) = delete;
-	Mesh(Mesh&&) = default;
-	Mesh& operator=(Mesh&&) = default;
-
+	Mesh(Mesh&&);
+	Mesh& operator=(Mesh&&);
+	~Mesh();
 
 
 	//Raw access to the vertex parameters.
-
 	inline Vec3* Positions()
 	{
-		return static_cast<Vec3*>(vertex_block_.ptr);
+		return GetVec3Attribute(MeshAttributes::POSITION);
+	}
+
+	inline const Vec3* Positions() const
+	{
+		return GetVec3Attribute(MeshAttributes::POSITION);
 	}
 
 	inline Vec3* Normals()
 	{
-		return static_cast<Vec3*>(vertex_block_.ptr) + num_verts_;
+		return GetVec3Attribute(MeshAttributes::NORMAL);
+	}
+
+	inline const Vec3* Normals() const
+	{
+		return GetVec3Attribute(MeshAttributes::NORMAL);
 	}
 
 	inline unsigned int* Indices()
+	{
+		return static_cast<unsigned int*>(index_block_.ptr);
+	}
+
+	inline const unsigned int* Indices() const
 	{
 		return static_cast<unsigned int*>(index_block_.ptr);
 	}
@@ -83,20 +125,84 @@ public:
 		return centroid;
 	}
 
-private:
-	
 
+	inline int VertexSize() const
+	{
+		return vertex_size_;
+	}
+
+private:
+	void SetMeshAttributes(uint16_t attributes);
+	void ComputeAttributeOffsets();
+	inline Vec3* GetVec3Attribute(MeshAttributes::Enum attr)
+	{
+		int index = log2(static_cast<size_t>(attr));
+		return reinterpret_cast<Vec3*>(static_cast<float*>(vertex_block_.ptr) +
+									   attribute_offset_[index]);
+	}
+	inline const Vec3* GetVec3Attribute(MeshAttributes::Enum attr) const
+	{
+		int index = log2(static_cast<size_t>(attr));
+		return reinterpret_cast<Vec3*>(static_cast<float*>(vertex_block_.ptr) +
+									   attribute_offset_[index]);
+	}
+
+	inline Vec4* GetVec4Attribute(MeshAttributes::Enum attr)
+	{
+		int index = log2(static_cast<size_t>(attr));
+		return reinterpret_cast<Vec4*>(static_cast<float*>(vertex_block_.ptr) +
+									   attribute_offset_[index]);
+	}
+	inline const Vec4* GetVec4Attribute(MeshAttributes::Enum attr) const
+	{
+		int index = log2(static_cast<size_t>(attr));
+		return reinterpret_cast<Vec4*>(static_cast<float*>(vertex_block_.ptr) +
+									   attribute_offset_[index]);
+	}
+
+	inline Vec2* GetVec2Attribute(MeshAttributes::Enum attr)
+	{
+		int index = log2(static_cast<size_t>(attr));
+		return reinterpret_cast<Vec2*>(static_cast<float*>(vertex_block_.ptr) +
+									   attribute_offset_[index]);
+	}
+	inline const Vec2* GetVec2Attribute(MeshAttributes::Enum attr) const
+	{
+		int index = log2(static_cast<size_t>(attr));
+		return reinterpret_cast<Vec2*>(static_cast<float*>(vertex_block_.ptr) +
+									   attribute_offset_[index]);
+	}
+
+	void AllocateVertexMemory(uint32_t num_vertices);
 
 	rkg::MemoryBlock vertex_block_{ nullptr,0 };
 	rkg::MemoryBlock index_block_{ nullptr, 0 };
 	uint32_t num_verts_{ 0 };
 	uint32_t num_indices_{ 0 };
+	uint16_t active_attributes_{ 1 }; //By default, have positions enabled
+	std::array<uint32_t, MeshAttributes::COUNT> attribute_offset_{ 0 };
+	int vertex_size_;
+
 
 
 	friend Mesh LoadPLY(const char* filename);
 	friend Mesh LoadOBJ(const char* filename);
-
 	friend Mesh MakeSquare(int num_div_x, int num_div_y);
+	/*
+		Returns a new mesh where each face is made of 3 unique vertices - duplicating shared verts.
+		Useful for adding per-face colors. This has the effect of no longer needing an index list, really - the indices are just 1..n
+	*/
+	friend Mesh SplitFaces(const Mesh& mesh);
+	
+	/*
+		
+	*/
+	friend Mesh ApplyPerFaceColor(const Mesh& mesh, const std::vector<Vec4>& colors);
+
+
+	//TODO: Fix this crappy attribute code. Let us set how large each attribute is, and treat as a byte array. 
+	//Use template functions to get attributes if I don't feel like dealing with floats. E.g. GetAttribute<Vec3>(MeshAttribute::Position);
+	//Can optionally specialize on the standard ones, asserting to enforce convention.
 };
 
 }

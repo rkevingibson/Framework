@@ -1077,6 +1077,7 @@ void gl::GetUniformBlockInfo(ProgramHandle h, const char* block_name, render::Pr
 VertexBufferHandle gl::CreateVertexBuffer(const MemoryBlock* data, const render::VertexLayout& layout)
 {
 	GLuint buffer;
+	glBindVertexArray(0);
 	glGenBuffers(1, &buffer);
 	glBindBuffer(GL_ARRAY_BUFFER, buffer);
 	glBufferData(GL_ARRAY_BUFFER, data->length, data->ptr, GL_STATIC_DRAW);
@@ -1094,6 +1095,7 @@ namespace
 
 GLuint CreateBuffer(const MemoryBlock* block, GLenum target, GLenum usage)
 {
+	glBindVertexArray(0);
 	GLuint buffer;
 	glGenBuffers(1, &buffer);
 	glBindBuffer(target, buffer);
@@ -1155,6 +1157,7 @@ uint32_t CreateElementBuffer(GLenum usage, render::IndexType type, const MemoryB
 	*buffer.obj = IndexBuffer{};
 	GLuint ib;
 	auto size = 0;
+	glBindVertexArray(0);
 	glGenBuffers(1, &ib);
 	if (block) {
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ib);
