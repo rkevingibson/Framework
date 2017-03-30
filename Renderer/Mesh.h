@@ -50,8 +50,8 @@ public:
 	Mesh() = default;
 	Mesh(const Mesh&) = delete;
 	Mesh& operator=(const Mesh&) = delete;
-	Mesh(Mesh&&);
-	Mesh& operator=(Mesh&&);
+	Mesh(Mesh&&) noexcept;
+	Mesh& operator=(Mesh&&) noexcept;
 	~Mesh();
 
 
@@ -188,6 +188,8 @@ private:
 	friend Mesh LoadPLY(const char* filename);
 	friend Mesh LoadOBJ(const char* filename);
 	friend Mesh MakeSquare(int num_div_x, int num_div_y);
+	friend Mesh MakeIcosphere(int num_divisions);
+
 	/*
 		Returns a new mesh where each face is made of 3 unique vertices - duplicating shared verts.
 		Useful for adding per-face colors. This has the effect of no longer needing an index list, really - the indices are just 1..n

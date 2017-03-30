@@ -20,7 +20,7 @@ namespace
 Mallocator mesh_allocator;
 }
 
-Mesh::Mesh(Mesh&& src)
+Mesh::Mesh(Mesh&& src) noexcept
 {
 	vertex_block_ = src.vertex_block_;
 	src.vertex_block_ = { nullptr, 0 };
@@ -33,7 +33,7 @@ Mesh::Mesh(Mesh&& src)
 	vertex_size_ = src.vertex_size_;
 }
 
-Mesh& Mesh::operator=(Mesh&& src)
+Mesh& Mesh::operator=(Mesh&& src) noexcept
 {
 	vertex_block_ = src.vertex_block_;
 	src.vertex_block_ = { nullptr, 0 };
@@ -347,11 +347,8 @@ Mesh MakeSquare(int num_div_x, int num_div_y)
 	mesh.SetMeshAttributes(MeshAttributes::POSITION | MeshAttributes::NORMAL);
 	mesh.AllocateVertexMemory(num_div_x*num_div_y);
 	mesh.ComputeAttributeOffsets();
-	
 
-	Mallocator allocator;
-
-	mesh.vertex_block_ = allocator.Allocate(mesh.num_verts_ * 6 * sizeof(float));
+	mesh.vertex_block_ = mesh_allocator.Allocate(mesh.num_verts_ * 6 * sizeof(float));
 	for (int x = 0; x < num_div_x; x++) {
 		for (int y = 0; y < num_div_y; y++) {
 			mesh.Positions()[x*num_div_y + y] = Vec3(x / (float)num_div_x, y / (float)num_div_y, 0.0);
@@ -359,7 +356,7 @@ Mesh MakeSquare(int num_div_x, int num_div_y)
 	}
 
 	mesh.num_indices_ = 3 * 2 * (num_div_x - 1)*(num_div_y - 1);
-	mesh.index_block_ = allocator.Allocate(mesh.num_indices_ * sizeof(unsigned int));
+	mesh.index_block_ = mesh_allocator.Allocate(mesh.num_indices_ * sizeof(unsigned int));
 	int index = 0;
 	for (int x = 0; x < num_div_x - 1; x++) {
 		for (int y = 0; y < num_div_y - 1; y++) {
@@ -376,6 +373,75 @@ Mesh MakeSquare(int num_div_x, int num_div_y)
 
 	mesh.ComputeNormals();
 
+	return mesh;
+}
+
+Mesh MakeIcosphere(int num_divisions)
+{
+	//TODO: Right now, this doesn't support division, only plain icosohedrons.
+
+	Mesh mesh;
+	mesh.SetMeshAttributes(MeshAttributes::POSITION | MeshAttributes::NORMAL);
+
+	int num_faces = 20;
+	int num_verts = 12;
+	mesh.AllocateVertexMemory(num_verts);
+	mesh.ComputeAttributeOffsets();
+
+
+	//Seems like there should be a closed form equation for the number of points/faces.
+	//There is one for the number of faces, but the verts is less obvious.
+	/*for (int i = 0; i < num_divisions; i++) {
+		num_verts = num_verts + 3 * num_faces / 2;
+		num_faces = 4 * num_faces;
+	}*/
+
+	//We hard-code in the initial icosohedron positions.
+	float t = 0.5f * (1.f + std::sqrt(5.f));
+	auto position = mesh.Positions();
+	position[0] = Normalize(rkg::Vec3(-1, t, 0));
+	position[1] = Normalize(rkg::Vec3(1, t, 0));
+	position[2] = Normalize(rkg::Vec3(-1, -t, 0));
+	position[3] = Normalize(rkg::Vec3(1, -t, 0));
+
+	position[4] = Normalize(rkg::Vec3(0, -1, t));
+	position[5] = Normalize(rkg::Vec3(0, 1, t));
+	position[6] = Normalize(rkg::Vec3(0, -1, -t));
+	position[7] = Normalize(rkg::Vec3(0, 1, -t));
+
+	position[8] = Normalize(rkg::Vec3(t, 0, -1));
+	position[9] = Normalize(rkg::Vec3(t, 0, 1));
+	position[10] = Normalize(rkg::Vec3(-t, 0, -1));
+	position[11] = Normalize(rkg::Vec3(-t, 0, 1));
+
+	unsigned int faces[] = {
+		0,11,5
+		,0,5,1,
+		0,1,7,
+		0,7,10,
+		0,10,11,
+		1,5,9,
+		5,11,4,
+		11,10,2,
+		10,7,6,
+		7,1,8,
+		3,9,4,
+		3,4,2,
+		3,2,6,
+		3,6,8,
+		3,8,9,
+		4,9,5,
+		2,4,11,
+		6,2,10,
+		8,6,7,
+		9,8,1,
+	};
+
+	mesh.index_block_ = mesh_allocator.Allocate(num_faces * 3 * sizeof(unsigned int));
+	memcpy(mesh.index_block_.ptr, faces, sizeof(faces));
+
+	mesh.num_indices_ = num_verts * 3;
+	mesh.ComputeNormals();
 	return mesh;
 }
 
