@@ -499,6 +499,7 @@ Mesh ApplyPerFaceColor(const Mesh& mesh, const std::vector<Vec4>& colors)
 	}
 	//TODO: Support general vertex layouts.
 
+	result.ComputeNormals();
 	return result;
 }
 
