@@ -117,7 +117,12 @@ void Mesh::ComputeNormals()
 	}
 
 	for (unsigned int v = 0; v < num_verts_; v++) {
+		
 		normals[v] = Normalize(normals[v]);
+		if (isnan(normals[v].x)) {
+			printf("Bad normal computation!\n");
+			normals[v] = Vec3(1, 0, 0);
+		}
 	}
 }
 

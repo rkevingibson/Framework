@@ -361,6 +361,8 @@ void DeleteGeometry(RenderResource geometry)
 	cmd->geom = geometry;
 	cmd->dispatch = [](Cmd* cmd) {
 		auto data = reinterpret_cast<CmdType*>(cmd);
+		gl::Destroy(geometries[data->geom].index_buffer);
+		gl::Destroy(geometries[data->geom].vertex_buffer);
 		geometries.Remove(data->geom);
 	};
 }
@@ -505,6 +507,8 @@ void DeleteMaterial(RenderResource material)
 	cmd->mat = material;
 	cmd->dispatch = [](Cmd* cmd) {
 		auto data = reinterpret_cast<CmdType*>(cmd);
+		gl::Destroy(materials[data->mat].program);
+		gl::Destroy(materials[data->mat].uniform_buffer);
 		materials.Remove(data->mat);
 	};
 }

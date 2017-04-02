@@ -149,6 +149,7 @@ order is ret, name, args...
 	GLX(void, BufferSubData, GLenum target, GLintptr offset, GLsizeiptr size, const GLvoid * data) \
 	GLX(void, BindVertexArray, GLuint vao) \
 	GLX(void, GenVertexArrays, GLuint n, GLuint* vaos) \
+	GLX(void, DeleteVertexArrays, GLsizei n, const GLuint* vaos) \
 	GLX(void, DeleteBuffers, GLuint n, GLuint* buffers) \
 	GLX(void, BindBufferBase, GLenum target, GLuint index, GLuint buffer) \
 	GLX(void, BindBufferRange, GLenum target, GLuint index, GLuint buffer, GLintptr offset, GLsizeiptr size)\

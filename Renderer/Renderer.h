@@ -44,13 +44,13 @@ constexpr uint32_t MAX_SHADER_STORAGE_BUFFERS = 64;
 constexpr uint32_t MAX_ATOMIC_COUNTER_BUFFERS = 64;
 constexpr uint32_t MAX_SSBO_BINDINGS = 8;
 constexpr uint32_t MAX_ATOMIC_COUNTER_BINDINGS = 8;
-constexpr uint32_t MAX_BUFFER_OBJECTS = 512;
+constexpr uint32_t MAX_BUFFER_OBJECTS = 4096;
 constexpr uint32_t MAX_BUFFER_BINDINGS = 16;
 constexpr uint32_t MAX_TEXTURES = 1024;
 constexpr uint32_t MAX_TEXTURE_UNITS = 16;
 constexpr uint32_t MAX_UNIFORMS = 256;
 constexpr uint32_t MAX_SHADER_PROGRAMS = 1024; //No clue what a normal number is for this.
-constexpr uint32_t MAX_VERTEX_ARRAY_OBJECTS = 2048;
+constexpr uint32_t MAX_VERTEX_ARRAY_OBJECTS = 1024;
 
 /*
 	Render state - gets reset after every draw call issued.

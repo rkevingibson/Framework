@@ -38,7 +38,6 @@ public:
 		hash_table_[loc].hash = hash;
 		hash_table_[loc].index = val;
 		static int num_added = 0;
-		printf("VAO Cache: %d objects", num_added++);
 	}
 
 	GLuint Get(uint32_t hash) const
@@ -51,7 +50,7 @@ public:
 			while (loc != INVALID_INDEX && index_chain_[loc].hash != hash) {
 				loc = index_chain_[loc].index;
 			}
-			return loc;
+			return (loc == INVALID_INDEX) ? INVALID_INDEX : index_chain_[loc].index;
 		}
 	}
 
@@ -66,7 +65,7 @@ public:
 	}
 
 	static constexpr GLuint INVALID_INDEX{ 0xFFFFFFFF };
-private:
+protected:
 	struct ValuePair
 	{
 		uint32_t hash{ INVALID_INDEX };
@@ -75,6 +74,33 @@ private:
 
 	std::array<ValuePair, Size> hash_table_;
 	std::array<ValuePair, Size> index_chain_;
+};
+
+template<uint32_t Size>
+class VAOCache : public GLCache<Size>
+{
+public:
+	void Clear()
+	{
+
+
+		for (auto& p : hash_table_) {
+			if (p.index != INVALID_INDEX) {
+				glDeleteVertexArrays(1, &p.index);
+			}
+			p.index = INVALID_INDEX;
+			p.hash = INVALID_INDEX;
+		}
+		for (auto& p : index_chain_) {
+			if (p.index != INVALID_INDEX) {
+				glDeleteVertexArrays(1, &p.index);
+			}
+			p.index = INVALID_INDEX;
+			p.hash = INVALID_INDEX;
+		}
+	}
+private:
+
 };
 
 template<uint32_t Size>
@@ -414,6 +440,7 @@ std::array<DrawCmd, MAX_DRAWS_PER_FRAME> render_buffer;
 int compute_buffer_count{ 0 };
 std::array<ComputeCmd, MAX_DRAWS_PER_FRAME> compute_buffer;
 
+VAOCache<MAX_VERTEX_ARRAY_OBJECTS> vao_cache;
 #pragma endregion
 
 unsigned int key_index{ 0 };
@@ -1405,6 +1432,7 @@ void gl::Destroy(VertexBufferHandle h)
 {
 	glDeleteBuffers(1, &vertex_buffers[h.index].buffer);
 	vertex_buffers.Remove(h.index);
+	vao_cache.Clear();
 }
 
 
@@ -1756,13 +1784,14 @@ void gl::Render()
 				auto vao_hash = hash.Finish();
 
 				//Attempt to lookup vao.
-				static GLCache<MAX_VERTEX_ARRAY_OBJECTS> vao_cache;
+				
 				auto vao = vao_cache.Get(vao_hash);
 				if (vao != vao_cache.INVALID_INDEX) {
 					glBindVertexArray(vao);
 				} else {
 					//Create a new VAO for this data.
 					glGenVertexArrays(1, &vao);
+
 					vao_cache.Add(vao_hash, vao);
 					glBindVertexArray(vao);
 					auto& vertex_buffer = vertex_buffers[draw_cmd->vertex_buffer];
