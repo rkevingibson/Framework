@@ -35,6 +35,14 @@ namespace rkg
 #endif
 	}
 
+	const char * GetFileExtension(const char * path, int len)
+	{
+		//Go backwards to nearest "."
+		const char* ptr = &path[len - 1];
+		while (*ptr != '.' && ptr >= path) { ptr--; }
+		return ptr + 1;
+	}
+
 	time_t GetFileEditedTime(const char* path)
 	{
 #ifdef _WIN32
