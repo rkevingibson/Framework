@@ -37,6 +37,8 @@ public:
 		index_chain_[val] = hash_table_[loc];
 		hash_table_[loc].hash = hash;
 		hash_table_[loc].index = val;
+		static int num_added = 0;
+		printf("VAO Cache: %d objects", num_added++);
 	}
 
 	GLuint Get(uint32_t hash) const

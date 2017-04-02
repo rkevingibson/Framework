@@ -200,6 +200,7 @@ void SetMaterialParameter(const RenderResource material, const char* name, const
 void DeleteMaterial(RenderResource material);
 
 RenderResource CreateMesh(const RenderResource  geometry, const RenderResource material);
+void SetMeshVisibility(const RenderResource mesh, bool visible);
 void DeleteMesh(const RenderResource mesh);
 
 void SetModelTransform(const RenderResource mesh, const Mat4& matrix);

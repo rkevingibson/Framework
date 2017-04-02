@@ -49,6 +49,8 @@ struct RenderMesh
 		Mat4 MVP;
 	} mesh_uniforms;
 	gl::BufferHandle uniform_buffer;
+
+	bool visible;
 };
 
 template<typename T>
@@ -196,20 +198,22 @@ void AddForwardPass(FrameGraph& graph)
 			//Draw this geometry.
 
 			//Update the ModelBlock variables.
-			mesh.mesh_uniforms.V = view_matrix;
-			mesh.mesh_uniforms.MV = view_matrix*mesh.mesh_uniforms.M;
-			mesh.mesh_uniforms.MVP = projection_matrix*mesh.mesh_uniforms.MV;
+			if (mesh.visible) {
+				mesh.mesh_uniforms.V = view_matrix;
+				mesh.mesh_uniforms.MV = view_matrix*mesh.mesh_uniforms.M;
+				mesh.mesh_uniforms.MVP = projection_matrix*mesh.mesh_uniforms.MV;
 
-			auto ref = gl::MakeRef(&mesh.mesh_uniforms, sizeof(RenderMesh::MeshUniforms));
-			gl::UpdateBufferObject(mesh.uniform_buffer, ref);
+				auto ref = gl::MakeRef(&mesh.mesh_uniforms, sizeof(RenderMesh::MeshUniforms));
+				gl::UpdateBufferObject(mesh.uniform_buffer, ref);
 
-			gl::SetVertexBuffer(geom.vertex_buffer);
-			gl::SetIndexBuffer(geom.index_buffer);
-			//Set any uniforms.
+				gl::SetVertexBuffer(geom.vertex_buffer);
+				gl::SetIndexBuffer(geom.index_buffer);
+				//Set any uniforms.
 
-			gl::SetBufferObject(mesh.uniform_buffer, gl::BufferTarget::UNIFORM, 0);
-			gl::SetBufferObject(material.uniform_buffer, gl::BufferTarget::UNIFORM, 1);
-			gl::Submit(0, material.program);
+				gl::SetBufferObject(mesh.uniform_buffer, gl::BufferTarget::UNIFORM, 0);
+				gl::SetBufferObject(material.uniform_buffer, gl::BufferTarget::UNIFORM, 1);
+				gl::Submit(0, material.program);
+			}
 		}
 	});
 }
@@ -386,6 +390,24 @@ RenderResource CreateMesh(const RenderResource geometry, const RenderResource ma
 	};
 
 	return cmd->mesh;
+}
+
+void SetMeshVisibility(const RenderResource mesh, bool visible)
+{
+	Expects(GetResourceType(mesh) == ResourceType::MESH);
+	struct CmdType : Cmd
+	{
+		RenderResource mesh;
+		bool visible;
+	};
+
+	auto cmd = render_commands.Add<CmdType>();
+	cmd->mesh = mesh;
+	cmd->visible = visible;
+	cmd->dispatch = [](Cmd* cmd) {
+		auto data = reinterpret_cast<CmdType*>(cmd);
+		meshes[data->mesh].visible = data->visible;
+	};
 }
 
 void DeleteMesh(const RenderResource mesh)
