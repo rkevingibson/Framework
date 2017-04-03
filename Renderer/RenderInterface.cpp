@@ -50,7 +50,7 @@ struct RenderMesh
 	} mesh_uniforms;
 	gl::BufferHandle uniform_buffer;
 
-	bool visible;
+	bool visible{ true };
 };
 
 template<typename T>
