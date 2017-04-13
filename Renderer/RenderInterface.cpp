@@ -134,7 +134,8 @@ public:
 		}
 
 		Ensures(false && "This should never happen!");
-		return T{};
+		static T BAD_HASH = T{};
+		return BAD_HASH;
 	}
 
 

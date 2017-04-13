@@ -84,19 +84,19 @@ public:
 	{
 
 
-		for (auto& p : hash_table_) {
-			if (p.index != INVALID_INDEX) {
+		for (auto& p : this->hash_table_) {
+			if (p.index != this->INVALID_INDEX) {
 				glDeleteVertexArrays(1, &p.index);
 			}
-			p.index = INVALID_INDEX;
-			p.hash = INVALID_INDEX;
+			p.index = this->INVALID_INDEX;
+			p.hash = this->INVALID_INDEX;
 		}
-		for (auto& p : index_chain_) {
-			if (p.index != INVALID_INDEX) {
+		for (auto& p : this->index_chain_) {
+			if (p.index != this->INVALID_INDEX) {
 				glDeleteVertexArrays(1, &p.index);
 			}
-			p.index = INVALID_INDEX;
-			p.hash = INVALID_INDEX;
+			p.index = this->INVALID_INDEX;
+			p.hash = this->INVALID_INDEX;
 		}
 	}
 private:
@@ -1626,7 +1626,7 @@ void gl::Render()
 
 
 	unsigned int num_commands = key_index;
-	glClearColor(0.f, 0.f, 0.f, 1.f);
+	glClearColor(1.f, 1.f, 1.f, 1.f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	for (unsigned int command_index = 0; command_index < num_commands; command_index++) {

@@ -207,4 +207,8 @@ private:
 	//Can optionally specialize on the standard ones, asserting to enforce convention.
 };
 
+Mesh LoadPLY(const char* filename);
+Mesh LoadOBJ(const char* filename);
+Mesh MakeSquare(int num_div_x, int num_div_y);
+Mesh MakeIcosphere(int num_divisions);
 }
