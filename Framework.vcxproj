@@ -421,8 +421,10 @@
     <ClInclude Include="external\imgui\stb_rect_pack.h" />
     <ClInclude Include="external\imgui\stb_textedit.h" />
     <ClInclude Include="external\imgui\stb_truetype.h" />
+    <ClInclude Include="External\json.hpp" />
     <ClInclude Include="external\rply\rply.h" />
     <ClInclude Include="external\rply\rplyfile.h" />
+    <ClInclude Include="External\tiny_obj_loader.h" />
     <ClInclude Include="renderer\ArcballCamera.h" />
     <ClInclude Include="Renderer\FrameGraph.h" />
     <ClInclude Include="renderer\GLLite.h" />

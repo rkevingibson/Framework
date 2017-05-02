@@ -8,7 +8,7 @@
 #include <External/rply/rply.h>
 
 #define TINYOBJLOADER_IMPLEMENTATION
-#include <External/tinyobj/tiny_obj_loader.h>
+#include <External/tiny_obj_loader.h>
 #include <vector>
 #include <string>
 #include <algorithm>

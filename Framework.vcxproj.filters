@@ -980,5 +980,11 @@
     <ClInclude Include="Renderer\FrameGraph.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="External\json.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="External\tiny_obj_loader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
