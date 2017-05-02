@@ -12,3 +12,10 @@ This will likely continue to grow to include things resembling a basic game engi
 * Virtual camera/arcball implementations
 * Some geometry code
 
+# External Libraries
+I use some external libraries that are super helpful, which I include here directly and not as submodules:
+
+* [Eigen](http://eigen.tuxfamily.org) v3.2 - an excellent linear algebra library. Licenced mostly under the MPL2 licence.
+* [rply](http://w3.impa.br/~diego/software/rply/), a nice simple C PLY file reader. MIT licensed.
+* [tinyobjloader](https://github.com/syoyo/tinyobjloader), for loading OBJ models. MIT licensed.
+* [nlohmann::json](https://github.com/nlohmann/json), for parsing json files. MIT licensed.
