@@ -12,6 +12,7 @@
 #include <vector>
 #include <string>
 #include <algorithm>
+#include <limits>
 
 namespace rkg
 {
@@ -123,6 +124,18 @@ void Mesh::ComputeNormals()
 			printf("Bad normal computation!\n");
 			normals[v] = Vec3(1, 0, 0);
 		}
+	}
+}
+
+void Mesh::ComputeBounds(Vec3* min_, Vec3* max_)
+{
+	constexpr auto LOWEST = std::numeric_limits<float>::lowest();
+	constexpr auto LARGEST = std::numeric_limits<float>::max();
+	*max_ = Vec3(LOWEST, LOWEST, LOWEST);
+	*min_ = Vec3(LARGEST, LARGEST, LARGEST);
+	for (int i = 0; i < num_verts_; i++) {
+		*max_ = Max(*max_, Positions()[i]);
+		*min_ = Min(*min_, Positions()[i]);
 	}
 }
 
@@ -256,15 +269,15 @@ int FacePLYCallback(p_ply_argument arg)
 
 }
 
-Mesh LoadPLY(const char* filename)
+std::unique_ptr<Mesh> LoadPLY(const char* filename)
 {
-	Mesh mesh;
+	auto mesh = std::make_unique<Mesh>();
 	auto ply = ply_open(filename, nullptr, 0, nullptr);
 	if (!ply) {
-		return mesh;
+		return nullptr;
 	}
 	if (!ply_read_header(ply)) {
-		return mesh;
+		return nullptr;
 	}
 
 
@@ -274,25 +287,25 @@ Mesh LoadPLY(const char* filename)
 
 	FacePLYData data;
 	auto nfaces = ply_set_read_cb(ply, "face", "vertex_indices", FacePLYCallback, &mesh, 0);
-	mesh.index_block_ = mesh_allocator.Allocate(nfaces * 3 * sizeof(float));
-	data.block = (int*)mesh.index_block_.ptr;
+	mesh->index_block_ = mesh_allocator.Allocate(nfaces * 3 * sizeof(float));
+	data.block = (int*)mesh->index_block_.ptr;
 	data.index = 0;
-	mesh.SetMeshAttributes(MeshAttributes::POSITION | MeshAttributes::NORMAL);
+	mesh->SetMeshAttributes(MeshAttributes::POSITION | MeshAttributes::NORMAL);
 
-	mesh.AllocateVertexMemory(nverts);
+	mesh->AllocateVertexMemory(nverts);
 
-	mesh.num_indices_ = 3 * nfaces;
+	mesh->num_indices_ = 3 * nfaces;
 
 	if (!ply_read(ply)) {
 		return mesh;
 	}
 	ply_close(ply);
 
-	mesh.ComputeNormals();
+	mesh->ComputeNormals();
 	return mesh;
 }
 
-Mesh LoadOBJ(const char* filename)
+std::unique_ptr<Mesh> LoadOBJ(const char* filename)
 {
 	tinyobj::attrib_t attrib;
 	std::vector<tinyobj::shape_t> shapes;
@@ -302,28 +315,28 @@ Mesh LoadOBJ(const char* filename)
 	tinyobj::LoadObj(&attrib, &shapes, &materials, &err, filename, nullptr, true);
 	//Want to separate out these meshes...
 
-	Mesh result;
+	auto mesh = std::make_unique<Mesh>();
 
 
-	result.num_verts_ = attrib.vertices.size() / 3;
+	mesh->num_verts_ = attrib.vertices.size() / 3;
 	//Copy the vertex data. normal data has to be copied seperately, since it may be in a different order.
 
-	result.SetMeshAttributes(MeshAttributes::POSITION | MeshAttributes::NORMAL);
-	result.AllocateVertexMemory(attrib.vertices.size() / 3);
-	memcpy(result.vertex_block_.ptr, attrib.vertices.data(), attrib.vertices.size() * sizeof(float));
+	mesh->SetMeshAttributes(MeshAttributes::POSITION | MeshAttributes::NORMAL);
+	mesh->AllocateVertexMemory(attrib.vertices.size() / 3);
+	memcpy(mesh->vertex_block_.ptr, attrib.vertices.data(), attrib.vertices.size() * sizeof(float));
 
 	uint32_t num_indices = 0;
 	for (auto& shape : shapes) {
 		num_indices += shape.mesh.indices.size();
 	}
-	result.num_indices_ = num_indices;
+	mesh->num_indices_ = num_indices;
 
-	result.index_block_ = mesh_allocator.Allocate(num_indices * sizeof(unsigned int));
+	mesh->index_block_ = mesh_allocator.Allocate(num_indices * sizeof(unsigned int));
 	uint32_t index_offset = 0;
 
 
-	auto normals = result.Normals();
-	auto indices = result.Indices();
+	auto normals = mesh->Normals();
+	auto indices = mesh->Indices();
 	bool has_normals = false;
 	for (auto& shape : shapes) {
 		auto& mesh_indices = shape.mesh.indices;
@@ -340,10 +353,10 @@ Mesh LoadOBJ(const char* filename)
 	}
 
 	if (!has_normals) {
-		result.ComputeNormals();
+		mesh->ComputeNormals();
 	}
 
-	return result;
+	return mesh;
 }
 
 Mesh MakeSquare(int num_div_x, int num_div_y)

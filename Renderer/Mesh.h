@@ -125,6 +125,7 @@ public:
 		return centroid;
 	}
 
+	void ComputeBounds(Vec3* min, Vec3* max);
 
 	inline int VertexSize() const
 	{
@@ -185,8 +186,8 @@ private:
 
 
 
-	friend Mesh LoadPLY(const char* filename);
-	friend Mesh LoadOBJ(const char* filename);
+	friend std::unique_ptr<Mesh> LoadPLY(const char* filename);
+	friend std::unique_ptr<Mesh> LoadOBJ(const char* filename);
 	friend Mesh MakeSquare(int num_div_x, int num_div_y);
 	friend Mesh MakeIcosphere(int num_divisions);
 
@@ -207,8 +208,8 @@ private:
 	//Can optionally specialize on the standard ones, asserting to enforce convention.
 };
 
-Mesh LoadPLY(const char* filename);
-Mesh LoadOBJ(const char* filename);
+std::unique_ptr<Mesh> LoadPLY(const char* filename);
+std::unique_ptr<Mesh> LoadOBJ(const char* filename);
 Mesh MakeSquare(int num_div_x, int num_div_y);
 Mesh MakeIcosphere(int num_divisions);
 }

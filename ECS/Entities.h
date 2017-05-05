@@ -126,7 +126,7 @@ public:
 			 i = hash_index_.Next(i)) {
 			if (data_[i].entity_id == id) {
 				//Remove this entry by swapping it with the last one in the data_ array.
-				data_[i] = data_.back();
+				data_[i] = std::move(data_.back());
 				//Need to update the appropriate slot in the hash_index.
 				//How to do this?
 				auto other_index = data_.size() - 1;
