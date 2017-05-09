@@ -37,6 +37,13 @@ class ArcballCamera;
 class ArcballSystem : public ecs::System
 {
 public:
+	ArcballSystem();
+	~ArcballSystem();
+	ArcballSystem(const ArcballSystem&) = delete;
+	ArcballSystem(ArcballSystem&&) = default;
+	ArcballSystem& operator=(const ArcballSystem&) = default;
+	ArcballSystem& operator=(ArcballSystem&&) = default;
+
 	virtual void Initialize() override;
 	virtual void Update(double delta_time) override;
 

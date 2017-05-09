@@ -78,6 +78,9 @@ void DeveloperConsole::AddCommand(const char* name, CommandFn fn)
 }
 
 
+ArcballSystem::ArcballSystem() = default;
+ArcballSystem::~ArcballSystem() = default;
+
 void ArcballSystem::Initialize()
 {
 	arcball = std::make_unique<ArcballCamera>();
