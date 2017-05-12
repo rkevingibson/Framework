@@ -52,6 +52,7 @@ public:
 				return &entities_[i];
 			}
 		}
+		return nullptr;
 	}
 
 	inline void DestroyEntity(EntityID id)
@@ -80,6 +81,11 @@ public:
 	//For using range-based for loops.
 	inline auto begin() { return entities_.begin(); }
 	inline auto end() { return entities_.end(); }
+
+	inline void Clear() {
+		hash_index_.Clear();
+		entities_.clear();
+	}
 };
 
 template<typename T>
@@ -142,6 +148,12 @@ public:
 
 	}
 
+
+	inline void Clear()
+	{
+		hash_index_.Clear();
+		data_.clear();
+	}
 
 	inline auto Begin()
 	{

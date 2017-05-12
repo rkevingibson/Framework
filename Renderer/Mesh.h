@@ -23,15 +23,15 @@ struct MeshAttributes
 	enum Enum : uint16_t
 	{
 	//These are Vec3 attributes
-		POSITION = 0b0000'0000'0001,
-		NORMAL = 0b0000'0000'0010,
-		TANGENT = 0b0000'0000'0100,
+		POSITION  = 0b0000'0000'0001,
+		NORMAL    = 0b0000'0000'0010,
+		TANGENT   = 0b0000'0000'0100,
 		BITANGENT = 0b0000'0000'1000,
 
 		//These are Vec4 attributes.
 		COLOR0 = 0b0000'0001'0000,
 		COLOR1 = 0b0000'0010'0000,
-		INDEX = 0b0000'0100'0000,
+		INDEX  = 0b0000'0100'0000,
 		WEIGHT = 0b0000'1000'0000,
 
 		//Texcoords are Vec2 attributes.

@@ -96,7 +96,7 @@ namespace ecs {
 			glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
 			glfwWindowHint(GLFW_SAMPLES, 2);
 
-			Input::ScreenSize = Vec2(600, 400);
+			Input::ScreenSize = Vec2(1920, 1080);
 			GLFWwindow* window = glfwCreateWindow(Input::ScreenSize.x, Input::ScreenSize.y, "Material Editor", nullptr, nullptr);
 			
 			if (!window)
