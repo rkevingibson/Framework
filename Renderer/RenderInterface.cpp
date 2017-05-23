@@ -51,6 +51,7 @@ struct RenderMesh
 	gl::BufferHandle uniform_buffer;
 
 	bool visible{ true };
+	bool two_sided{ false };
 };
 
 struct RenderLight
@@ -226,6 +227,13 @@ void AddForwardPass(FrameGraph& graph)
 
 				gl::SetBufferObject(mesh.uniform_buffer, gl::BufferTarget::UNIFORM, 0);
 				gl::SetBufferObject(material.uniform_buffer, gl::BufferTarget::UNIFORM, 1);
+
+				gl::SetState(gl::RenderState::RGB_WRITE 
+					| gl::RenderState::ALPHA_WRITE 
+					| gl::RenderState::DEPTH_WRITE 
+					| gl::RenderState::DEPTH_TEST_LESS 
+					| gl::RenderState::PRIMITIVE_TRIANGLES
+					| (mesh.two_sided ? gl::RenderState::CULL_OFF : gl::RenderState::CULL_CCW));
 				gl::Submit(0, material.program);
 			}
 		}
@@ -451,6 +459,24 @@ void SetMeshVisibility(const RenderResource mesh, bool visible)
 	cmd->dispatch = [](Cmd* cmd) {
 		auto data = reinterpret_cast<CmdType*>(cmd);
 		meshes[data->mesh].visible = data->visible;
+	};
+}
+
+void SetMeshTwoSided(const RenderResource mesh, bool two_sided)
+{
+	Expects(GetResourceType(mesh) == ResourceType::MESH);
+	struct CmdType : Cmd
+	{
+		RenderResource mesh;
+		bool two_sided;
+	};
+
+	auto cmd = render_commands.Add<CmdType>();
+	cmd->mesh = mesh;
+	cmd->two_sided = two_sided;
+	cmd->dispatch = [](Cmd* cmd) {
+		auto data = reinterpret_cast<CmdType*>(cmd);
+		meshes[data->mesh].two_sided = data->two_sided;
 	};
 }
 

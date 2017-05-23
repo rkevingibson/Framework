@@ -28,7 +28,7 @@ void main()
 	vec3 light_dir = view_dir;
 	
 	vec3 diffuse = albedo.xyz*invPI;
-	vec3 color = diffuse*max(dot(light_dir, normalize(normalWC)), 0.0);
+	vec3 color = diffuse*abs(dot(light_dir, normalize(normalWC)));
 
 	frag_color = vec4(pow(color, vec3(0.45, 0.45,0.45)),1.0);
 }
