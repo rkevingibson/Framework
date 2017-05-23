@@ -121,7 +121,7 @@ void Mesh::ComputeNormals()
 		
 		normals[v] = Normalize(normals[v]);
 		if (isnan(normals[v].x)) {
-			printf("Bad normal computation!\n");
+			//printf("Bad normal computation!\n");
 			normals[v] = Vec3(1, 0, 0);
 		}
 	}

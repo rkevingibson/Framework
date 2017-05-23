@@ -53,6 +53,19 @@ struct RenderMesh
 	bool visible{ true };
 };
 
+struct RenderLight
+{
+	enum Type {
+		POINT,
+		SPHERE,
+		DIRECTIONAL,
+		LINE,
+	};
+
+	Vec3 color;
+	Type type;
+};
+
 template<typename T>
 class ResourceContainer
 {
@@ -219,6 +232,34 @@ void AddForwardPass(FrameGraph& graph)
 	});
 }
 
+void ForwardRendererPrototype()
+{
+	/*
+		Just going to outline the code necessary for a DOOM-like forward+ renderer.
+		The rough steps are as follows:
+		1. Compute shader(s) is dispatched to compute lighting clusters. We have a buffer of lights, as just a flat array.
+			This shader runs for each light and computes a cluster list, where each element of this cluster list has an offset and count into an item list, which stores actual light indices.
+			This may not be as easily parallelized as I thought - computing the counts can be easily done using atomics, but offsets needs a prefix scan, and the item list needs to be sorted. So probably better done on the CPU.
+			May be easier to just do this computation serially. 
+		2. Optional: Depth pre-pass. Avoids overdraw, so probably worthwhile. Also outputs a velocity buffer - probably won't bother with that for a while.
+		3. Forward pass: For each mesh, draw it to the frame buffer. Do lighting lookups here, etc.
+		For now, this would even be enough for me. I can probably do everything here in a single pass, but maybe not IBL. If I need to, I can do that afterwards.
+
+		3. Debug pass: Anything that needs to get drawn without lighting, draw to a separate buffer, but doing depth testing against the forward pass.
+						IMGUI stuff can be drawn here as well, to a fullscreen framebuffer.
+		4. Optional: SSAO pass? / Tonemapping and postprocessing goes here.
+		5. Composition: Combing the current color buffer with the debug pass output, then blit to screen.
+		
+		So all this is fairly easy.
+
+		Questions: How to handle multiple light types? Since it's clustered by froxel, 
+		there shouldn't be much in terms of warp divergence for branching on light types, 
+		so it should be fine to just switch, handle a few types specifically? Maybe to a trace of Doom in renderdoc, and see what the 
+		buffers/shaders look like.
+	*/
+
+	
+}
 
 void RenderLoop(GLFWwindow* window)
 {
