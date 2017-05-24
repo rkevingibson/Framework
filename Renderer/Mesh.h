@@ -49,6 +49,8 @@ public:
 
 	Mesh() = default;
 	Mesh(const Mesh&) = delete;
+	Mesh(const Eigen::Matrix3Xf& V, const Eigen::Matrix3Xi& F);
+
 	Mesh& operator=(const Mesh&) = delete;
 	Mesh(Mesh&&) noexcept;
 	Mesh& operator=(Mesh&&) noexcept;

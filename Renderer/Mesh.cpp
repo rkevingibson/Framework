@@ -21,6 +21,19 @@ namespace
 Mallocator mesh_allocator;
 }
 
+Mesh::Mesh(const Eigen::Matrix3Xf & V, const Eigen::Matrix3Xi & F)
+{
+	SetMeshAttributes(MeshAttributes::POSITION | MeshAttributes::NORMAL);
+	AllocateVertexMemory(V.cols());
+	ComputeAttributeOffsets();
+
+	memcpy_s(vertex_block_.ptr, vertex_block_.length, V.data(), V.size() * sizeof(float));
+	index_block_ = mesh_allocator.Allocate(F.size() * sizeof(int));
+	num_indices_ = F.size();
+	memcpy_s(index_block_.ptr, index_block_.length, F.data(), F.size() * sizeof(int));
+	ComputeNormals();
+}
+
 Mesh::Mesh(Mesh&& src) noexcept
 {
 	vertex_block_ = src.vertex_block_;
