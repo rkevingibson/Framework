@@ -202,6 +202,7 @@ void DeleteMaterial(RenderResource material);
 RenderResource CreateMesh(const RenderResource  geometry, const RenderResource material);
 void SetMeshVisibility(const RenderResource mesh, bool visible);
 void SetMeshTwoSided(const RenderResource mesh, bool two_sided);
+void SetMeshDrawWireframe(const RenderResource mesh, bool wireframe);
 void DeleteMesh(const RenderResource mesh);
 
 void SetModelTransform(const RenderResource mesh, const Mat4& matrix);

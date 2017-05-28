@@ -52,6 +52,7 @@ struct RenderMesh
 
 	bool visible{ true };
 	bool two_sided{ false };
+	bool draw_wireframe{ false };
 };
 
 struct RenderLight
@@ -195,6 +196,9 @@ ResourceContainer<RenderMaterial> materials;
 void AddForwardPass(FrameGraph& graph)
 {
 	//Simple example which just draws meshes to the 
+
+
+
 	struct PassData
 	{
 
@@ -233,7 +237,8 @@ void AddForwardPass(FrameGraph& graph)
 					| gl::RenderState::DEPTH_WRITE 
 					| gl::RenderState::DEPTH_TEST_LESS 
 					| gl::RenderState::PRIMITIVE_TRIANGLES
-					| (mesh.two_sided ? gl::RenderState::CULL_OFF : gl::RenderState::CULL_CCW));
+					| (mesh.two_sided ? gl::RenderState::CULL_OFF : gl::RenderState::CULL_CCW)
+					| (mesh.draw_wireframe ? gl::RenderState::POLYGON_MODE_LINE : gl::RenderState::POLYGON_MODE_FILL));
 				gl::Submit(0, material.program);
 			}
 		}
@@ -477,6 +482,24 @@ void SetMeshTwoSided(const RenderResource mesh, bool two_sided)
 	cmd->dispatch = [](Cmd* cmd) {
 		auto data = reinterpret_cast<CmdType*>(cmd);
 		meshes[data->mesh].two_sided = data->two_sided;
+	};
+}
+
+void SetMeshDrawWireframe(const RenderResource mesh, bool wireframe)
+{
+	Expects(GetResourceType(mesh) == ResourceType::MESH);
+	struct CmdType : Cmd
+	{
+		RenderResource mesh;
+		bool wireframe;
+	};
+
+	auto cmd = render_commands.Add<CmdType>();
+	cmd->mesh = mesh;
+	cmd->wireframe = wireframe;
+	cmd->dispatch = [](Cmd* cmd) {
+		auto data = reinterpret_cast<CmdType*>(cmd);
+		meshes[data->mesh].draw_wireframe = data->wireframe;
 	};
 }
 
