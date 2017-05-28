@@ -1756,6 +1756,17 @@ void gl::Render()
 				const int primitive_index = (draw_cmd->render_state & RenderState::PRIMITIVE_MASK) >> RenderState::PRIMITIVE_SHIFT;
 				primitive_type = primitive_types[primitive_index];
 			}
+
+			//Polygon mode.
+			if ((raster_state ^ draw_cmd->render_state) & RenderState::POLYGON_MODE_MASK != 0) {
+				if ((draw_cmd->render_state & RenderState::POLYGON_MODE_MASK) == RenderState::POLYGON_MODE_LINE) {
+					glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+				}
+				else {
+					glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+				}
+			}
+
 			raster_state = draw_cmd->render_state;
 		}
 
@@ -1898,7 +1909,7 @@ void gl::InitializeBackend(GLFWwindow* window)
 #endif
 
 	glEnable(GL_DEPTH_TEST);
-	//glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 	glEnable(GL_SCISSOR_TEST);
 	glEnable(GL_BLEND);
 	glBlendEquation(GL_FUNC_ADD);
