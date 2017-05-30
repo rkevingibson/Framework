@@ -1,12 +1,12 @@
 #pragma once
-#include "../External/GLFW/glfw3.h"
-
 /*
 	Just some helper functions to set up ImGui with glfw and the renderer.
 	Doesn't override the glfw callbacks, since those are application specific.
 	Instead, call the appropriate functions in the application's callbacks.
 
 */
+
+struct GLFWwindow;
 
 namespace rkg {
 	void InitializeImgui(GLFWwindow* window);

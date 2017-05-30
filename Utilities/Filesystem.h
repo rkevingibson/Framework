@@ -27,5 +27,7 @@ namespace rkg
 {
 	std::vector<std::string> GetDirectoryListing(const char* path, bool files = true, bool folders = true);
 
+	const char* GetFileExtension(const char* path, int len);
+
 	time_t GetFileEditedTime(const char* path);//Returns time that the file was last edited/modified.
 }

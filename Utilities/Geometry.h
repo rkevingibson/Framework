@@ -1,9 +1,9 @@
 #pragma once
 #include <algorithm>
 
+
 namespace rkg {
 	//Includes some basic geometric primitives - vectors, matrices. All fixed size here.
-
 	struct Vec2 {
 		float x, y;
 
@@ -187,7 +187,7 @@ namespace rkg {
 		Vec4(const Vec4&) = default;
 		Vec4(Vec4&&) = default;
 		Vec4(float x, float y, float z, float w = 1) : x(x), y(y), z(z), w(w) {}
-		Vec4(const Vec3& v) : x(v.x), y(v.y), z(v.z), w(1) {}
+		Vec4(const Vec3& v, float w = 1) : x(v.x), y(v.y), z(v.z), w(w) {}
 		Vec4& operator=(const Vec4&) = default;
 		Vec4& operator=(Vec4&&) = default;
 
@@ -336,9 +336,36 @@ namespace rkg {
 	{
 		float data[16];
 
+		static const Mat4 Identity;
+		Mat4() = default;
+		Mat4(const Vec4& col0, const Vec4& col1, const Vec4& col2, const Vec4& col3)
+		{
+			data[0] = col0.x; data[1] = col0.y; data[2] = col0.z; data[3] = col0.w;
+			data[4] = col1.x; data[5] = col1.y; data[6] = col1.z; data[7] = col1.w;
+			data[8] = col2.x; data[9] = col2.y; data[10] = col2.z; data[11] = col2.w;
+			data[12] = col3.x; data[13] = col3.y; data[14] = col3.z; data[15] = col3.w;
+		}
+
 		inline void SetZero()
 		{
 			memset(data, 0, sizeof(data));
+		}
+
+		inline void SetScale(float x, float y, float z)
+		{
+			for (int i = 0; i < 3; i++) {
+				data[4 * i] *= x;
+				data[4 * i + 1] *= y;
+				data[4 * i + 2] *= z;
+			}
+		}
+
+		inline void SetTranslation(const Vec3& t)
+		{
+			data[12] = t.x;
+			data[13] = t.y;
+			data[14] = t.z;
+			data[15] = 1;
 		}
 
 		inline float& operator()(unsigned int row, unsigned int col)
@@ -360,7 +387,6 @@ namespace rkg {
 		{
 			return data[idx];
 		}
-
 
 		inline friend Mat4 operator*(const Mat4& lhs, const Mat4& rhs)
 		{
@@ -386,6 +412,20 @@ namespace rkg {
 			x[14] = lhs[2] * rhs[12] + lhs[6] * rhs[13] + lhs[10] * rhs[14] + lhs[14] * rhs[15];
 			x[15] = lhs[3] * rhs[12] + lhs[7] * rhs[13] + lhs[11] * rhs[14] + lhs[15] * rhs[15];
 			return x;
+		}
+
+		inline friend Mat4 operator*(const Mat4& lhs, float rhs)
+		{
+			Mat4 x;
+			for (int i = 0; i < 16; i++) {
+				x[i] = lhs[i] * rhs;
+			}
+			return x;
+		}
+
+		inline friend Mat4 operator*(float lhs, const Mat4& rhs)
+		{
+			return rhs*lhs;
 		}
 
 	};

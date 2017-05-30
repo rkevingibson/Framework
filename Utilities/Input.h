@@ -62,6 +62,11 @@ public:
 	static bool GetKey(Keyname key);
 	static bool GetKeyDown(Keyname key);
 	static bool GetKeyUp(Keyname key);
+
+	using ResizeCallback = void(*)(int w, int h, void* data);
+	static void RegisterResizeCallback(ResizeCallback callback, void* user_data = nullptr);
+	static void ResizeScreen(int w, int h);
+
 };
 
 }

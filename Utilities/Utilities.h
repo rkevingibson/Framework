@@ -97,9 +97,7 @@ inline size_t log2(size_t v)
 
 inline size_t RoundToAligned(size_t n, size_t alignment)
 {
-	//Todo: need to figure out alignment. 
-	//Not every allocator should be aligned the same.
-	return n;
+	return (n + alignment - 1) & ~(alignment - 1);
 }
 
 //Round up n to the nearest power of 2.
@@ -118,18 +116,23 @@ constexpr inline unsigned int Max(unsigned int a, unsigned int b)
 	return (a > b) ? a : b;
 }
 
+constexpr inline float Clamp(float x, float a, float b)
+{
+	return (x < a) ? a : ((x > b) ? b : x);
+}
+
 //A couple compile-time hash functions that work on strings literals. Great for IDs!
 constexpr uint32_t hash32_val_const = 0x811c9dc5;
 constexpr uint32_t hash32_prime_const = 0x1000193;
-constexpr inline uint32_t hash32(const char* const str, const uint32_t value = hash32_val_const) noexcept {
-	return (str[0] == '\0') ? value : hash32(&str[1], (value ^ uint32_t(str[0])) * hash32_prime_const);
+constexpr inline uint32_t Hash32(const char* const str, const uint32_t value = hash32_val_const) noexcept {
+	return (str[0] == '\0') ? value : Hash32(&str[1], (value ^ uint32_t(str[0])) * hash32_prime_const);
 }
 
 constexpr uint64_t hash64_val_const = 0xcbf29ce484222325;
 constexpr uint64_t hash64_prime_const = 0x100000001b3;
-constexpr inline uint64_t hash64(const char* const str, const uint64_t value = hash64_val_const) noexcept {
+constexpr inline uint64_t Hash64(const char* const str, const uint64_t value = hash64_val_const) noexcept {
 	
-	return (str[0] == '\0') ? value : hash64(&str[1], (value ^ uint64_t(str[0])) * hash64_prime_const);
+	return (str[0] == '\0') ? value : Hash64(&str[1], (value ^ uint64_t(str[0])) * hash64_prime_const);
 }
 
 /*

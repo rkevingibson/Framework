@@ -12,14 +12,15 @@
 #include <cstdint>
 #include <limits>
 #include "../Utilities/Utilities.h"
+#include "RenderInterface.h"
+
 /*Enables some debug information - less efficient, stores some strings it otherwise wouldn't keep.*/
 #define RENDER_DEBUG
-
 struct GLFWwindow;
 
 namespace rkg
 {
-namespace render
+namespace gl
 {
 
 #define RENDER_HANDLE(name)\
@@ -29,12 +30,8 @@ RENDER_HANDLE(VertexBufferHandle);
 RENDER_HANDLE(IndexBufferHandle);
 RENDER_HANDLE(ProgramHandle);
 RENDER_HANDLE(UniformHandle);
-RENDER_HANDLE(DynamicVertexBufferHandle);
-RENDER_HANDLE(DynamicIndexBufferHandle);
-RENDER_HANDLE(AtomicCounterBufferHandle);
-RENDER_HANDLE(SSBOHandle);
 RENDER_HANDLE(TextureHandle);
-
+RENDER_HANDLE(BufferHandle);
 
 constexpr uint32_t INVALID_HANDLE = std::numeric_limits<uint32_t>::max();
 
@@ -47,6 +44,8 @@ constexpr uint32_t MAX_SHADER_STORAGE_BUFFERS = 64;
 constexpr uint32_t MAX_ATOMIC_COUNTER_BUFFERS = 64;
 constexpr uint32_t MAX_SSBO_BINDINGS = 8;
 constexpr uint32_t MAX_ATOMIC_COUNTER_BINDINGS = 8;
+constexpr uint32_t MAX_BUFFER_OBJECTS = 4096;
+constexpr uint32_t MAX_BUFFER_BINDINGS = 16;
 constexpr uint32_t MAX_TEXTURES = 1024;
 constexpr uint32_t MAX_TEXTURE_UNITS = 16;
 constexpr uint32_t MAX_UNIFORMS = 256;
@@ -124,8 +123,13 @@ enum Enum : uint64_t
 	PRIMITIVE_PATCHES = 0x0000000007000000,
 	PRIMITIVE_MASK = 0x000000000f000000,
 	PRIMITIVE_SHIFT = 24,
+	//Polygon mode
+	POLYGON_MODE_FILL =  0x0000000010000000,
+	POLYGON_MODE_LINE =  0x0000000020000000,
+	POLYGON_MODE_MASK =  0x00000000f0000000,
+	POLYGON_MODE_SHIFT = 28,
 	//Default state.
-	DEFAULT_STATE = RGB_WRITE | ALPHA_WRITE | DEPTH_WRITE | DEPTH_TEST_LESS | PRIMITIVE_TRIANGLES,
+	DEFAULT_STATE = RGB_WRITE | ALPHA_WRITE | DEPTH_WRITE | DEPTH_TEST_LESS | PRIMITIVE_TRIANGLES | POLYGON_MODE_FILL,
 };
 };
 
@@ -151,14 +155,6 @@ enum class UniformType : uint8_t
 	Count
 };
 
-//Types that can be used for an index buffer
-enum class IndexType
-{
-	UByte,
-	UShort,
-	UInt,
-};
-
 enum class TextureFormat
 {
 //TODO: Get more texture formats working
@@ -166,55 +162,16 @@ enum class TextureFormat
 	RGBA8,
 };
 
-struct VertexLayout
+enum class BufferTarget
 {
-
-	struct AttributeType
-	{
-		enum Enum : uint8_t
-		{
-			Int8,
-			Uint8,
-
-			Int16,
-			Uint16,
-			Float16,
-
-			Int32,
-			Uint32,
-			Packed_2_10_10_10_REV,//GL_INT_2_10_10_10_REV
-			UPacked_2_10_10_10_REV,//GL_UNSIGNED_INT_2_10_10_10_REV
-			Float32,
-
-			Float64,
-			Count
-		};
-	};
-
-	static constexpr uint16_t MAX_ATTRIBUTES = 16;
-	static constexpr uint16_t MAX_ATTRIBUTE_NAME_LENGTH = 16;
-	//Add an attribute type.
-	VertexLayout& Add(const char* name, uint16_t num, AttributeType::Enum type, bool normalized = false);
-
-	//TODO: Figure out vertex layout description.
-	inline uint16_t SizeOfVertex()
-	{
-		return stride;
-	}
-
-
-	VertexLayout& Clear();
-
-	uint8_t num_attributes{ 0 };
-	uint16_t stride{ 0 };
-	uint16_t offset[MAX_ATTRIBUTES];
-	uint8_t attribs[MAX_ATTRIBUTES];
-	char names[MAX_ATTRIBUTES][MAX_ATTRIBUTE_NAME_LENGTH];
+	SHADER_STORAGE,
+	UNIFORM,
+	ATOMIC_COUNTER,
 };
 
 using ErrorCallbackFn = void(*)(const char* msg);
 
-void Initialize(GLFWwindow* window);
+void InitializeBackend(GLFWwindow* window);
 void SetErrorCallback(ErrorCallbackFn f);
 void Resize(int w, int h);
 
@@ -242,29 +199,22 @@ ProgramHandle	CreateComputeProgram(const MemoryBlock* compute_shader);
 unsigned int	GetNumUniforms(ProgramHandle h); //NOTE: This function must be called a frame after the program was created.
 int	GetProgramUniforms(ProgramHandle h, UniformHandle* buffer, int size);
 void	GetUniformInfo(UniformHandle h, char* name, int name_size, UniformType* type);
+void GetUniformBlockInfo(ProgramHandle h, const char* block_name, render::PropertyBlock* block);
 #pragma endregion
 
 #pragma region Vertex Buffer Functions
-VertexBufferHandle	CreateVertexBuffer(const MemoryBlock* data, const VertexLayout& layout);
-DynamicVertexBufferHandle	CreateDynamicVertexBuffer(const MemoryBlock* data, const VertexLayout& layout);
-DynamicVertexBufferHandle	CreateDynamicVertexBuffer(const VertexLayout& layout);
-void	UpdateDynamicVertexBuffer(DynamicVertexBufferHandle handle, const MemoryBlock* data, const ptrdiff_t offset = 0);
+VertexBufferHandle	CreateVertexBuffer(const MemoryBlock* data, const render::VertexLayout& layout);
+VertexBufferHandle	CreateDynamicVertexBuffer(const MemoryBlock* data, const render::VertexLayout& layout);
+VertexBufferHandle	CreateDynamicVertexBuffer(const render::VertexLayout& layout);
+void	UpdateDynamicVertexBuffer(VertexBufferHandle handle, const MemoryBlock* data, const ptrdiff_t offset = 0);
 
 #pragma endregion
 
 #pragma region Index Buffer Functions
-IndexBufferHandle	CreateIndexBuffer(const MemoryBlock* data, IndexType type);
-DynamicIndexBufferHandle CreateDynamicIndexBuffer(const MemoryBlock* data, IndexType type);
-DynamicIndexBufferHandle	CreateDynamicIndexBuffer(IndexType type);
-void	UpdateDynamicIndexBuffer(DynamicIndexBufferHandle handle, const MemoryBlock* data, const ptrdiff_t offset = 0);
-#pragma endregion
-
-#pragma region Misc Buffer Functions
-SSBOHandle	CreateShaderStorageBuffer(const MemoryBlock* data);
-void	UpdateShaderStorageBuffer(SSBOHandle handle, const MemoryBlock* data);
-AtomicCounterBufferHandle CreateAtomicCounterBuffer(const MemoryBlock* data);
-void	UpdateAtomicCounterBuffer(AtomicCounterBufferHandle handle, const MemoryBlock* data);
-
+IndexBufferHandle	CreateIndexBuffer(const MemoryBlock* data, render::IndexType type);
+IndexBufferHandle	CreateDynamicIndexBuffer(const MemoryBlock* data, render::IndexType type);
+IndexBufferHandle	CreateDynamicIndexBuffer(render::IndexType type);
+void	UpdateDynamicIndexBuffer(IndexBufferHandle handle, const MemoryBlock* data, const ptrdiff_t offset = 0);
 #pragma endregion
 
 #pragma region Texture Functions
@@ -278,36 +228,37 @@ UniformHandle	CreateUniform(const char* name, UniformType type);
 //Sets uniforms - these will be set on the program of whatever the next submit call is on the calling thread.
 void SetUniform(UniformHandle handle, const void* data, int num = 1);
 
+BufferHandle CreateBufferObject(const MemoryBlock* data = nullptr);
+void UpdateBufferObject(BufferHandle handle, const MemoryBlock* data);
 
 //Because handles are all unique types, we can have nice overloading to keep things simple.
 //TODO: Right now these don't do anything.
 void	Destroy(ProgramHandle);
 void	Destroy(VertexBufferHandle);
-void	Destroy(DynamicVertexBufferHandle);
 void	Destroy(IndexBufferHandle);
-void	Destroy(DynamicIndexBufferHandle);
 void	Destroy(TextureHandle);
 void	Destroy(UniformHandle);
+void	Destroy(BufferHandle);
 //TODO: None of these are implemented yet. 
 
 //Set state for the next draw call on this thread - thread local. 
 void SetState(uint64_t flags);
 
 void SetVertexBuffer(VertexBufferHandle h, uint32_t first_vertex = 0, uint32_t num_verts = UINT32_MAX);
-void SetVertexBuffer(DynamicVertexBufferHandle h, uint32_t first_vertex = 0, uint32_t num_verts = UINT32_MAX);
 void SetIndexBuffer(IndexBufferHandle h, uint32_t first_element = 0, uint32_t num_elements = UINT32_MAX);
-void SetIndexBuffer(DynamicIndexBufferHandle h, uint32_t first_element = 0, uint32_t num_elements = UINT32_MAX);
+
 void SetTexture(TextureHandle tex, UniformHandle sampler, uint16_t texture_unit);
-void SetShaderStorageBuffer(SSBOHandle h, uint32_t binding);
-void SetAtomicCounterBuffer(AtomicCounterBufferHandle h, uint32_t binding);
+void SetBufferObject(BufferHandle h, BufferTarget target, uint32_t binding);
+
 void SetScissor(uint32_t x, uint32_t y, uint32_t w, uint32_t h);
+
+
 
 //Submit a draw call using the currently bound buffers.
 void Submit(uint8_t layer, ProgramHandle program, uint32_t depth = 0, bool preserve_state = false);
 void SubmitCompute(uint8_t layer, ProgramHandle program, uint16_t num_x = 1, uint16_t num_y = 1, uint16_t num_z = 1);
 
-void EndFrame();//Submit frame to render thread.
-//void Render();//Submit the frame to the renderer.
+void Render();//Submit the frame to the renderer.
 
 
 }//End namespace render

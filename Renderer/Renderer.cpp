@@ -16,7 +16,7 @@
 #include "GLLite.h"
 
 using namespace rkg;
-using namespace render;
+using namespace gl;
 
 
 namespace
@@ -37,6 +37,7 @@ public:
 		index_chain_[val] = hash_table_[loc];
 		hash_table_[loc].hash = hash;
 		hash_table_[loc].index = val;
+		static int num_added = 0;
 	}
 
 	GLuint Get(uint32_t hash) const
@@ -49,7 +50,7 @@ public:
 			while (loc != INVALID_INDEX && index_chain_[loc].hash != hash) {
 				loc = index_chain_[loc].index;
 			}
-			return loc;
+			return (loc == INVALID_INDEX) ? INVALID_INDEX : index_chain_[loc].index;
 		}
 	}
 
@@ -64,7 +65,7 @@ public:
 	}
 
 	static constexpr GLuint INVALID_INDEX{ 0xFFFFFFFF };
-private:
+protected:
 	struct ValuePair
 	{
 		uint32_t hash{ INVALID_INDEX };
@@ -73,6 +74,33 @@ private:
 
 	std::array<ValuePair, Size> hash_table_;
 	std::array<ValuePair, Size> index_chain_;
+};
+
+template<uint32_t Size>
+class VAOCache : public GLCache<Size>
+{
+public:
+	void Clear()
+	{
+
+
+		for (auto& p : this->hash_table_) {
+			if (p.index != this->INVALID_INDEX) {
+				glDeleteVertexArrays(1, &p.index);
+			}
+			p.index = this->INVALID_INDEX;
+			p.hash = this->INVALID_INDEX;
+		}
+		for (auto& p : this->index_chain_) {
+			if (p.index != this->INVALID_INDEX) {
+				glDeleteVertexArrays(1, &p.index);
+			}
+			p.index = this->INVALID_INDEX;
+			p.hash = this->INVALID_INDEX;
+		}
+	}
+private:
+
 };
 
 template<uint32_t Size>
@@ -259,7 +287,7 @@ struct VertexBuffer
 {
 	GLuint buffer;
 	uint32_t size;
-	VertexLayout layout;
+	render::VertexLayout layout;
 };
 
 struct IndexBuffer
@@ -267,6 +295,12 @@ struct IndexBuffer
 	GLuint	buffer;
 	uint32_t	num_elements;
 	GLenum	type;
+};
+
+struct BufferObject
+{
+	GLuint buffer;
+	uint32_t size;
 };
 
 struct ShaderStorageBuffer
@@ -321,6 +355,16 @@ struct RenderCmd
 	GLuint ssbos[MAX_SSBO_BINDINGS];
 	GLuint atomic_counters[MAX_ATOMIC_COUNTER_BINDINGS];
 
+	struct BufferBinding
+	{
+		GLuint buffer_object;
+		GLenum target;
+		GLintptr offset;
+		GLsizeiptr size;
+	};
+
+	BufferBinding buffers[MAX_BUFFER_BINDINGS];
+
 	RenderCmd()
 	{
 		for (int i = 0; i < MAX_TEXTURE_UNITS; i++) {
@@ -333,6 +377,10 @@ struct RenderCmd
 
 		for (int i = 0; i < MAX_ATOMIC_COUNTER_BINDINGS; i++) {
 			atomic_counters[i] = UINT32_MAX;
+		}
+
+		for (int i = 0; i < MAX_BUFFER_BINDINGS; i++) {
+			buffers[i] = { UINT32_MAX, 0,0 };
 		}
 	}
 };
@@ -369,8 +417,8 @@ struct ComputeCmd : public RenderCmd
 };
 
 #pragma endregion
-	//I need some queues. First off, a queue for the draw cmds. 
-	//These are double-buffered, to allow submission while rendering.
+//I need some queues. First off, a queue for the draw cmds. 
+//These are double-buffered, to allow submission while rendering.
 std::atomic<uint64_t> frame;
 ErrorCallbackFn error_callback;
 
@@ -392,6 +440,7 @@ std::array<DrawCmd, MAX_DRAWS_PER_FRAME> render_buffer;
 int compute_buffer_count{ 0 };
 std::array<ComputeCmd, MAX_DRAWS_PER_FRAME> compute_buffer;
 
+VAOCache<MAX_VERTEX_ARRAY_OBJECTS> vao_cache;
 #pragma endregion
 
 unsigned int key_index{ 0 };
@@ -416,85 +465,13 @@ ResourceList<VertexBuffer, MAX_VERTEX_BUFFERS>   vertex_buffers;
 ResourceList<IndexBuffer, MAX_INDEX_BUFFERS>     index_buffers;
 ResourceList<ShaderStorageBuffer, MAX_SHADER_STORAGE_BUFFERS>     shader_storage_buffers;
 ResourceList<AtomicCounterBuffer, MAX_ATOMIC_COUNTER_BUFFERS> atomic_counter_buffers;
+ResourceList<BufferObject, MAX_BUFFER_OBJECTS>   buffer_objects;
 ResourceList<Texture, MAX_TEXTURES>              textures;
 ResourceList<Uniform, MAX_UNIFORMS>              uniforms;
 ResourceList<Program, MAX_SHADER_PROGRAMS>       programs;
 
 
 /*==================== Pre/post-rendering Command Buffer ====================*/
-
-struct Cmd
-{
-	using DispatchFn = void(*)(Cmd*);
-	DispatchFn dispatch;
-};
-
-class CommandBuffer
-{
-private:
-	unsigned int write_pos_{ 0 };
-	unsigned int write_index_{ 0 };
-	unsigned int read_pos_{ 0 };
-	unsigned int read_index_{ 0 };
-
-	constexpr static unsigned int SIZE{ KILO(4) };
-	constexpr static unsigned int CAPACITY{ KILO(1) };
-	std::array<unsigned int, CAPACITY> cmd_indices_;
-	std::array<rkg::byte, SIZE> buffer_;//Allocate a 4k static buffer
-
-public:
-
-	inline unsigned int GetWritePosition()
-	{
-		return write_index_;
-	}
-
-	void Execute(unsigned int end)
-	{
-		for (unsigned int i = read_index_; i < end; i++, read_index_++) {
-			read_pos_ = cmd_indices_[i % CAPACITY];
-			Cmd* cmd = reinterpret_cast<Cmd*>(&buffer_[cmd_indices_[i % CAPACITY] % SIZE]);
-			cmd->dispatch(cmd);
-		}
-	}
-
-	template<typename T>
-	inline bool Push(const T& t)
-	{
-		static_assert(std::is_base_of<Cmd, T>::value, "Adding invalid command");
-		//We're strictly single-reader/singe-consumer right now.
-		//This lock makes us safe to have multiple-readers/single-consumer.
-		unsigned int wpos = write_pos_;
-		unsigned int windex = write_index_;
-
-		//Check to make sure this command fits before the end, 
-		//since I'm doing a dumb memcpy.
-		if ((wpos % SIZE) + sizeof(T) > SIZE) {
-			wpos = wpos + SIZE - (wpos % SIZE);
-		}
-		//Check that there's room in the queue.
-		if (windex == read_index_ + CAPACITY) {
-			return false;
-		}
-		if (wpos + sizeof(T) > read_pos_ + SIZE) {//NB: read_pos_ does an atomic read - should be okay.
-			return false;
-		}
-
-		//There's room, copy the data. 
-		memcpy(&buffer_[wpos % SIZE], &t, sizeof(T));
-		auto cmd = reinterpret_cast<T*>(&buffer_[wpos % SIZE]);
-		cmd->dispatch = T::DISPATCH;
-		cmd_indices_[windex % CAPACITY] = wpos;
-
-		//Finally, increment the buffer pointer, indicating that an item has been added.
-		write_pos_ = wpos + sizeof(T);
-		write_index_ = windex + 1;
-		return true;
-	}
-};
-
-CommandBuffer pre_buffer;
-CommandBuffer post_buffer;
 
 class UniformBuffer
 {
@@ -676,7 +653,7 @@ void FreeMemory()
 
 }
 
-const MemoryBlock* render::Alloc(const uint32_t size)
+const MemoryBlock* gl::Alloc(const uint32_t size)
 {
 	auto block = renderer_allocator.Allocate(size + sizeof(MemoryBlock));
 	auto result = reinterpret_cast<MemoryBlock*>(block.ptr);
@@ -685,14 +662,14 @@ const MemoryBlock* render::Alloc(const uint32_t size)
 	return result;
 }
 
-const MemoryBlock* render::AllocAndCopy(const void * const data, const uint32_t size)
+const MemoryBlock* gl::AllocAndCopy(const void * const data, const uint32_t size)
 {
 	auto block = Alloc(size);
 	memcpy(block->ptr, data, size);
 	return block;
 }
 
-const MemoryBlock* render::MakeRef(const void* data, const uint32_t size, ReleaseFunction fn, void* user_data)
+const MemoryBlock* gl::MakeRef(const void* data, const uint32_t size, ReleaseFunction fn, void* user_data)
 {
 	auto block = renderer_allocator.Allocate(sizeof(MemoryRef));
 	auto ref = reinterpret_cast<MemoryRef*>(block.ptr);
@@ -703,7 +680,7 @@ const MemoryBlock* render::MakeRef(const void* data, const uint32_t size, Releas
 	return &ref->block;
 }
 
-const MemoryBlock* render::LoadShaderFile(const char* file)
+const MemoryBlock* gl::LoadShaderFile(const char* file)
 {
 	using namespace std;
 	FILE* f;
@@ -723,89 +700,43 @@ const MemoryBlock* render::LoadShaderFile(const char* file)
 }
 
 #pragma region VertexLayout functions
-VertexLayout & VertexLayout::Add(const char* name, uint16_t num, AttributeType::Enum type, bool normalized)
-{
-	Expects(type < AttributeType::Count);
-
-	/*
-		Pack attribute info into 8 bits:
-		76543210
-		xnttttss
-		x - reserved
-		n - normalized
-		t - type
-		s - number
-	*/
-	attribs[num_attributes] = 0 |
-		((normalized << 6) & 0x40) |
-		((type << 2) & 0x3C) |
-		((num - 1) & 0x03);
-	offset[num_attributes] = stride;
-	strcpy_s(names[num_attributes], MAX_ATTRIBUTE_NAME_LENGTH, name);
-	//Need to compute type size:
-	uint8_t size = 4;
-	if (type == AttributeType::Int8 || type == AttributeType::Uint8) {
-		size = 1;
-	} else if (type == AttributeType::Int16 || type == AttributeType::Uint16 || type == AttributeType::Float16) {
-		size = 2;
-	} else if (type == AttributeType::Float64) {
-		size = 8;
-	}
-
-	stride += size * num;
-
-	num_attributes++;
-	return *this;
-}
-
-VertexLayout & VertexLayout::Clear()
-{
-	for (int i = 0; i < MAX_ATTRIBUTES; ++i) {
-		offset[i] = 0;
-		attribs[i] = 0;
-		memset(names[i], 0, MAX_ATTRIBUTE_NAME_LENGTH);
-	}
-	stride = 0;
-	num_attributes = 0;
-	return *this;
-}
-
 namespace
 {
-GLenum GetGLEnum(VertexLayout::AttributeType::Enum val)
+GLenum GetGLEnum(render::VertexLayout::AttributeType val)
 {
+	using namespace render;
 	switch (val) {
-	case VertexLayout::AttributeType::Int8:
+	case VertexLayout::AttributeType::INT8:
 		return GL_BYTE;
 		break;
-	case VertexLayout::AttributeType::Uint8:
+	case VertexLayout::AttributeType::UINT8:
 		return GL_UNSIGNED_BYTE;
 		break;
-	case VertexLayout::AttributeType::Int16:
+	case VertexLayout::AttributeType::INT16:
 		return GL_SHORT;
 		break;
-	case VertexLayout::AttributeType::Uint16:
+	case VertexLayout::AttributeType::UINT16:
 		return GL_UNSIGNED_SHORT;
 		break;
-	case VertexLayout::AttributeType::Float16:
+	case VertexLayout::AttributeType::FLOAT16:
 		return GL_HALF_FLOAT;
 		break;
-	case VertexLayout::AttributeType::Int32:
+	case VertexLayout::AttributeType::INT32:
 		return GL_INT;
 		break;
-	case VertexLayout::AttributeType::Uint32:
+	case VertexLayout::AttributeType::UINT32:
 		return GL_UNSIGNED_INT;
 		break;
-	case VertexLayout::AttributeType::Packed_2_10_10_10_REV:
+	case VertexLayout::AttributeType::PACKED_2_10_10_10_REV:
 		return GL_INT_2_10_10_10_REV;
 		break;
-	case VertexLayout::AttributeType::UPacked_2_10_10_10_REV:
+	case VertexLayout::AttributeType::UPACKED_2_10_10_10_REV:
 		return GL_UNSIGNED_INT_2_10_10_10_REV;
 		break;
-	case VertexLayout::AttributeType::Float32:
+	case VertexLayout::AttributeType::FLOAT32:
 		return GL_FLOAT;
 		break;
-	case VertexLayout::AttributeType::Float64:
+	case VertexLayout::AttributeType::FLOAT64:
 		return GL_DOUBLE;
 		break;
 	default:
@@ -860,34 +791,27 @@ void GLAPI GLErrorCallback(GLenum source, GLenum type, GLuint id, GLenum severit
 #pragma endregion
 
 
-void render::SetErrorCallback(ErrorCallbackFn f)
+void gl::SetErrorCallback(ErrorCallbackFn f)
 {
 	error_callback = f;
 }
 
-namespace
-{
-void Resize(Cmd*);
-struct ResizeCmd : Cmd
-{
-	static constexpr DispatchFn DISPATCH{ Resize };
-	int w, h;
-};
+//namespace
+//{
+//void Resize(Cmd*);
+//struct ResizeCmd : Cmd
+//{
+//	static constexpr DispatchFn DISPATCH{ Resize };
+//	int w, h;
+//};
+//
+//void Resize(Cmd* cmd)
+//{
+//	auto data = reinterpret_cast<ResizeCmd*>(cmd);
+//	glViewport(0, 0, data->w, data->h);
+//}
+//}
 
-void Resize(Cmd* cmd)
-{
-	auto data = reinterpret_cast<ResizeCmd*>(cmd);
-	glViewport(0, 0, data->w, data->h);
-}
-}
-
-void render::Resize(int w, int h)
-{
-	ResizeCmd cmd;
-	cmd.w = w;
-	cmd.h = h;
-	pre_buffer.Push(cmd);
-}
 
 
 
@@ -945,107 +869,47 @@ UniformType UniformTypeFromEnum(GLenum e)
 		break;
 	}
 }
+}
 
-void CreateProgram(Cmd* cmd);
-struct CreateProgramCmd : Cmd
+ProgramHandle gl::CreateProgram(const MemoryBlock* vertex_shader, const MemoryBlock* frag_shader)
 {
-	static constexpr DispatchFn DISPATCH = { CreateProgram };
-	uint32_t index;
-	const MemoryBlock* vert_shader{ nullptr };
-	const MemoryBlock* frag_shader{ nullptr };
-	const MemoryBlock* compute_shader{ nullptr };
-	const MemoryBlock* geom_shader{ nullptr };
-};
-void CreateProgram(Cmd* cmd)
-{
-	auto data = reinterpret_cast<CreateProgramCmd*>(cmd);
+	auto program_handle = programs.Create();
 
 	GLuint program;
 	program = glCreateProgram();
 
-	if (data->compute_shader) {
+	auto vert = glCreateShader(GL_VERTEX_SHADER);
+	glShaderSource(vert, 1, (const GLchar**)&vertex_shader->ptr, nullptr);
+	glCompileShader(vert);
+	glAttachShader(program, vert);
 
-		auto compute = glCreateShader(GL_COMPUTE_SHADER);
-		glShaderSource(compute, 1, (const GLchar**)&data->compute_shader->ptr, nullptr);
-		glCompileShader(compute);
-		glAttachShader(program, compute);
+	auto frag = glCreateShader(GL_FRAGMENT_SHADER);
+	glShaderSource(frag, 1, (const GLchar**)&frag_shader->ptr, nullptr);
+	glCompileShader(frag);
+	glAttachShader(program, frag);
 
-		if (error_callback != nullptr) {
-			GLint status;
-
-			glGetShaderiv(compute, GL_COMPILE_STATUS, &status);
-			if (status != GL_TRUE) {
-				char buffer[512];
-				glGetShaderInfoLog(compute, 512, NULL, buffer);
-				error_callback(buffer);
-			}
+	if (error_callback != nullptr) {
+		GLint status;
+		glGetShaderiv(vert, GL_COMPILE_STATUS, &status);
+		if (status != GL_TRUE) {
+			char buffer[512];
+			glGetShaderInfoLog(vert, 512, NULL, buffer);
+			error_callback(buffer);
 		}
 
-		glLinkProgram(program);
-
-		glDeleteShader(compute);
-		DeallocateBlock(data->compute_shader);
-
-	} else {
-		auto vert = glCreateShader(GL_VERTEX_SHADER);
-		glShaderSource(vert, 1, (const GLchar**)&data->vert_shader->ptr, nullptr);
-		glCompileShader(vert);
-		glAttachShader(program, vert);
-
-		auto frag = glCreateShader(GL_FRAGMENT_SHADER);
-		glShaderSource(frag, 1, (const GLchar**)&data->frag_shader->ptr, nullptr);
-		glCompileShader(frag);
-		glAttachShader(program, frag);
-
-		GLuint geom;
-		if (data->geom_shader) {
-			geom = glCreateShader(GL_GEOMETRY_SHADER);
-			glShaderSource(geom, 1, (const GLchar**)&data->geom_shader->ptr, nullptr);
-			glCompileShader(geom);
-			glAttachShader(program, geom);
+		glGetShaderiv(frag, GL_COMPILE_STATUS, &status);
+		if (status != GL_TRUE) {
+			char buffer[512];
+			glGetShaderInfoLog(frag, 512, NULL, buffer);
+			error_callback(buffer);
 		}
-
-		if (error_callback != nullptr) {
-			GLint status;
-			glGetShaderiv(vert, GL_COMPILE_STATUS, &status);
-			if (status != GL_TRUE) {
-				char buffer[512];
-				glGetShaderInfoLog(vert, 512, NULL, buffer);
-				error_callback(buffer);
-			}
-
-			glGetShaderiv(frag, GL_COMPILE_STATUS, &status);
-			if (status != GL_TRUE) {
-				char buffer[512];
-				glGetShaderInfoLog(frag, 512, NULL, buffer);
-				error_callback(buffer);
-			}
-
-			if (data->geom_shader) {
-				glGetShaderiv(geom, GL_COMPILE_STATUS, &status);
-				if (status != GL_TRUE) {
-					char buffer[512];
-					glGetShaderInfoLog(geom, 512, NULL, buffer);
-					error_callback(buffer);
-				}
-			}
-		}
-
-
-		glLinkProgram(program);
-		glDeleteShader(vert);
-		glDeleteShader(frag);
-		DeallocateBlock(data->vert_shader);
-		DeallocateBlock(data->frag_shader);
-
-		if (data->geom_shader) {
-			glDeleteShader(geom);
-			DeallocateBlock(data->geom_shader);
-		}
-
 	}
 
-
+	glLinkProgram(program);
+	glDeleteShader(vert);
+	glDeleteShader(frag);
+	DeallocateBlock(vertex_shader);
+	DeallocateBlock(frag_shader);
 
 	//Get uniform information.
 	{
@@ -1072,60 +936,99 @@ void CreateProgram(Cmd* cmd)
 			rkg::MurmurHash murmur;
 			murmur.Add(uniform_name_buffer, length);
 			auto hash = murmur.Finish();
-			programs[data->index].uniforms.Add(hash, loc);
+			program_handle.obj->uniforms.Add(hash, loc);
 
 
 			auto uni = uniforms.Create();
 			uni.obj->hash = hash;
 			strcpy_s(uni.obj->name, uniform_name_buffer);
 			uni.obj->type = UniformTypeFromEnum(type);
-			programs[data->index].uniform_handles[i].index = uni.index;
+			program_handle.obj->uniform_handles[i].index = uni.index;
 
 		}
-		programs[data->index].num_uniforms = num_uniforms;
+		program_handle.obj->num_uniforms = num_uniforms;
 	}
 
-	programs[data->index].id = program;
+	program_handle.obj->id = program;
+
+
+	return ProgramHandle{ program_handle.index };
 }
 
-}
-
-ProgramHandle render::CreateProgram(const MemoryBlock* vertex_shader, const MemoryBlock* frag_shader)
+ProgramHandle gl::CreateComputeProgram(const MemoryBlock * compute_shader)
 {
-	auto program = programs.Create();
-	ProgramHandle result{ program.index };
+	auto program_handle = programs.Create();
+
+	GLuint program;
+	program = glCreateProgram();
+
+	auto compute = glCreateShader(GL_COMPUTE_SHADER);
+	glShaderSource(compute, 1, (const GLchar**)&compute_shader->ptr, nullptr);
+	glCompileShader(compute);
+	glAttachShader(program, compute);
+
+	if (error_callback != nullptr) {
+		GLint status;
+		glGetShaderiv(compute, GL_COMPILE_STATUS, &status);
+		if (status != GL_TRUE) {
+			char buffer[512];
+			glGetShaderInfoLog(compute, 512, NULL, buffer);
+			error_callback(buffer);
+		}
+	}
+
+	glLinkProgram(program);
+	glDeleteShader(compute);
+	DeallocateBlock(compute_shader);
+
+	{
+		GLint num_uniforms, uniform_name_buffer_size;
+		glGetProgramiv(program, GL_ACTIVE_UNIFORMS, &num_uniforms);
+		constexpr size_t UNIFORM_NAME_BUFFER_SIZE = 128;
+		GLchar uniform_name_buffer[UNIFORM_NAME_BUFFER_SIZE];
+
+#ifdef RENDER_DEBUG
+		glGetProgramiv(program, GL_ACTIVE_UNIFORM_MAX_LENGTH, &uniform_name_buffer_size);
+		uniform_name_buffer_size++;
+		ASSERT(num_uniforms < 0 || uniform_name_buffer_size < UNIFORM_NAME_BUFFER_SIZE);
+#endif
+		for (GLint i = 0; i < num_uniforms; ++i) {
+			GLint size;
+			GLsizei length;
+			GLenum type;
+			//NOTE:CHECK THIS FUNCTION. WROTE WITHOUT DOCS.
+			glGetActiveUniform(program, i, UNIFORM_NAME_BUFFER_SIZE, &length,
+							   &size, &type, uniform_name_buffer);
+			auto loc = glGetUniformLocation(program, uniform_name_buffer);
+
+			if (loc < 0) continue;
+			rkg::MurmurHash murmur;
+			murmur.Add(uniform_name_buffer, length);
+			auto hash = murmur.Finish();
+			program_handle.obj->uniforms.Add(hash, loc);
 
 
-	CreateProgramCmd cmd;
-	cmd.vert_shader = vertex_shader;
-	cmd.frag_shader = frag_shader;
-	cmd.index = program.index;
-	pre_buffer.Push(cmd);
+			auto uni = uniforms.Create();
+			uni.obj->hash = hash;
+			strcpy_s(uni.obj->name, uniform_name_buffer);
+			uni.obj->type = UniformTypeFromEnum(type);
+			program_handle.obj->uniform_handles[i].index = uni.index;
 
+		}
+		program_handle.obj->num_uniforms = num_uniforms;
+	}
 
-	return result;
+	program_handle.obj->id = program;
+
+	return ProgramHandle{ program_handle.index };
 }
 
-ProgramHandle render::CreateComputeProgram(const MemoryBlock * compute_shader)
-{
-	auto program = programs.Create();
-	ProgramHandle result{ program.index };
-	CreateProgramCmd cmd;
-
-	cmd.compute_shader = compute_shader;
-	cmd.index = program.index;
-	pre_buffer.Push(cmd);
-
-	return result;
-	return ProgramHandle();
-}
-
-unsigned int render::GetNumUniforms(ProgramHandle h)
+unsigned int gl::GetNumUniforms(ProgramHandle h)
 {
 	return programs[h.index].num_uniforms;
 }
 
-int render::GetProgramUniforms(ProgramHandle h, UniformHandle* buffer, int size)
+int gl::GetProgramUniforms(ProgramHandle h, UniformHandle* buffer, int size)
 {
 	memcpy_s(buffer,
 			 size * sizeof(UniformHandle),
@@ -1134,7 +1037,7 @@ int render::GetProgramUniforms(ProgramHandle h, UniformHandle* buffer, int size)
 	return programs[h.index].num_uniforms;
 }
 
-void render::GetUniformInfo(UniformHandle h, char* name, int name_size, UniformType* type)
+void gl::GetUniformInfo(UniformHandle h, char* name, int name_size, UniformType* type)
 {
 	//Get the name and type
 #ifdef RENDER_DEBUG
@@ -1147,142 +1050,128 @@ void render::GetUniformInfo(UniformHandle h, char* name, int name_size, UniformT
 	}
 }
 
+void gl::GetUniformBlockInfo(ProgramHandle h, const char* block_name, render::PropertyBlock*block)
+{
+	auto program = programs[h.index].id;
+	auto block_index = glGetUniformBlockIndex(program, block_name);
+	GLint data_size;
+	glGetActiveUniformBlockiv(program, block_index, GL_UNIFORM_BLOCK_DATA_SIZE, &data_size);
+	
+	block->buffer = std::make_unique<char[]>(data_size);
+	block->buffer_size = data_size;
+	
+	GLint num_uniforms;
+	glGetActiveUniformBlockiv(program, block_index, GL_UNIFORM_BLOCK_ACTIVE_UNIFORMS, &num_uniforms);
+
+	//NOTE: How do I want to handle memory allocation here?
+	//Lets assume I'm filling out some structure that has an allocator.
+	//But I have temporaries to fill out - I can probably use a stack allocator for this, since things are small.
+	//rkg::StackAllocator<KILO(2)> allocator;
+
+	auto indices = std::make_unique<GLint[]>(num_uniforms);
+	glGetActiveUniformBlockiv(program, block_index, GL_UNIFORM_BLOCK_ACTIVE_UNIFORM_INDICES, indices.get());
+
+	auto offsets = std::make_unique<GLint[]>(num_uniforms);
+	glGetActiveUniformsiv(program, num_uniforms, (GLuint*)indices.get(), GL_UNIFORM_OFFSET, offsets.get());
+	auto name_lengths = std::make_unique<GLint[]>(num_uniforms);
+	glGetActiveUniformsiv(program, num_uniforms, (GLuint*)indices.get(), GL_UNIFORM_NAME_LENGTH, name_lengths.get());
+	auto array_strides = std::make_unique<GLint[]>(num_uniforms);
+	glGetActiveUniformsiv(program, num_uniforms, (GLuint*)indices.get(), GL_UNIFORM_ARRAY_STRIDE, array_strides.get());
+	auto matrix_strides = std::make_unique<GLint[]>(num_uniforms);
+	glGetActiveUniformsiv(program, num_uniforms, (GLuint*)indices.get(), GL_UNIFORM_MATRIX_STRIDE, matrix_strides.get());
+	auto sizes = std::make_unique<GLint[]>(num_uniforms);
+	glGetActiveUniformsiv(program, num_uniforms, (GLuint*)indices.get(), GL_UNIFORM_SIZE, matrix_strides.get());
+	auto types = std::make_unique<GLint[]>(num_uniforms);
+	glGetActiveUniformsiv(program, num_uniforms, (GLuint*)indices.get(), GL_UNIFORM_TYPE, matrix_strides.get());
+
+	//Get the uniform names.
+	for (int i = 0; i < num_uniforms; i++) {
+		
+		auto name = std::make_unique<char[]>(name_lengths[i] + 1);
+		GLsizei len;
+		glGetActiveUniformName(program, indices[i], name_lengths[i] + 1, &len, name.get());
+		render::PropertyBlock::Property p;
+		p.offset = offsets[i];
+		p.array_stride = array_strides[i];
+		p.matrix_stride = matrix_strides[i];
+		p.size = sizes[i];
+		p.type = types[i];
+		block->properties[name.get()] = p;
+	}
+}
+
+
 #pragma region Vertex Buffer Functions
+
+VertexBufferHandle gl::CreateVertexBuffer(const MemoryBlock* data, const render::VertexLayout& layout)
+{
+	GLuint buffer;
+	glBindVertexArray(0);
+	glGenBuffers(1, &buffer);
+	glBindBuffer(GL_ARRAY_BUFFER, buffer);
+	glBufferData(GL_ARRAY_BUFFER, data->length, data->ptr, GL_STATIC_DRAW);
+	auto vb = vertex_buffers.Create();
+	vb.obj->buffer = buffer;
+	vb.obj->size = data->length;
+	vb.obj->layout = layout;
+	DeallocateBlock(data);
+
+	return VertexBufferHandle{ vb.index };
+}
 
 namespace
 {
-void CreateVertexBuffer(Cmd* cmd);
-struct CreateVertexBufferCmd : Cmd
+
+GLuint CreateBuffer(const MemoryBlock* block, GLenum target, GLenum usage)
 {
-	uint32_t index;
-	static constexpr DispatchFn DISPATCH = { CreateVertexBuffer };
-	const MemoryBlock* block;
-};
-void CreateVertexBuffer(Cmd* cmd)
-{
-	auto data = reinterpret_cast<CreateVertexBufferCmd*>(cmd);
-	GLuint vb;
-	glGenBuffers(1, &vb);
-	glBindBuffer(GL_ARRAY_BUFFER, vb);
-	glBufferData(GL_ARRAY_BUFFER, data->block->length, data->block->ptr, GL_STATIC_DRAW);
-	vertex_buffers[data->index].buffer = vb;
-	vertex_buffers[data->index].size = data->block->length;
-	DeallocateBlock(data->block);
-}
+	glBindVertexArray(0);
+	GLuint buffer;
+	glGenBuffers(1, &buffer);
+	glBindBuffer(target, buffer);
+	if (block) {
+		glBufferData(target, block->length, block->ptr, usage);
+		DeallocateBlock(block);
+	}
+	return buffer;
 }
 
-VertexBufferHandle render::CreateVertexBuffer(const MemoryBlock* data, const VertexLayout& layout)
+}
+
+VertexBufferHandle gl::CreateDynamicVertexBuffer(const MemoryBlock* data, const render::VertexLayout& layout)
 {
 	auto vb = vertex_buffers.Create();
 	VertexBufferHandle result{ vb.index };
 
-
-	CreateVertexBufferCmd cmd;
-	cmd.block = data;
-	cmd.index = vb.index;
-	pre_buffer.Push(cmd);
-
-	//NOTE: It might be better to move this stuff to the CmdBuffer. A little more memory being copied for a bit fewer memory accesses.
 	vb.obj->layout = layout;
+	vb.obj->size = (data) ? data->length : 0;
+	vb.obj->buffer = CreateBuffer(data, GL_ARRAY_BUFFER, GL_DYNAMIC_DRAW);
 	return result;
 }
 
-namespace
-{
-void CreateBuffer(Cmd* cmd);
-struct CreateBufferCmd : Cmd
-{
-	static constexpr DispatchFn DISPATCH = { CreateBuffer };
-	const MemoryBlock* block;
-	GLenum target;
-	GLenum usage;
-	uint32_t* size;
-	GLuint* name;
-};
-
-void CreateBuffer(Cmd* cmd)
-{
-	auto data = reinterpret_cast<CreateBufferCmd*>(cmd);
-	GLuint buffer;
-	glGenBuffers(1, &buffer);
-	glBindBuffer(data->target, buffer);
-	if (data->block) {
-		glBufferData(data->target, data->block->length, data->block->ptr, data->usage);
-	}
-
-	*data->name = buffer;
-	*data->size = (data->block == nullptr) ? 0 : data->block->length;
-	if (data->block) {
-		DeallocateBlock(data->block);
-	}
-}
-
-}
-
-DynamicVertexBufferHandle render::CreateDynamicVertexBuffer(const MemoryBlock* data, const VertexLayout& layout)
-{
-	auto vb = vertex_buffers.Create();
-	DynamicVertexBufferHandle result{ vb.index };
-
-	CreateBufferCmd cmd;
-	cmd.block = data;
-	cmd.name = &vb.obj->buffer;
-	cmd.size = &vb.obj->size;
-	cmd.target = GL_ARRAY_BUFFER;
-	cmd.usage = GL_DYNAMIC_DRAW;
-	pre_buffer.Push(cmd);
-
-	vb.obj->layout = layout;
-	return result;
-}
-
-DynamicVertexBufferHandle render::CreateDynamicVertexBuffer(const VertexLayout& layout)
+VertexBufferHandle gl::CreateDynamicVertexBuffer(const render::VertexLayout& layout)
 {
 	return CreateDynamicVertexBuffer(nullptr, layout);
 }
 
 namespace
 {
-void UpdateDynamicBuffer(Cmd* cmd);
-struct UpdateDynamicBufferCmd : Cmd
+void UpdateDynamicBuffer(GLenum target, GLuint buffer, const MemoryBlock* block, uint32_t* size)
 {
-	static constexpr DispatchFn DISPATCH = { UpdateDynamicBuffer };
-	uint32_t* size;
-	GLintptr offset;
-	GLenum target;
-	GLuint* buffer;
-	const MemoryBlock* block;
-
-};
-
-void UpdateDynamicBuffer(Cmd* cmd)
-{
-	auto data = reinterpret_cast<UpdateDynamicBufferCmd*>(cmd);
-
-	glBindBuffer(data->target, *data->buffer);
-	if (*data->size < data->offset + data->block->length) {
-		//TODO: Right now, this breaks the use of offset, by not copying the data over.
-		glBufferData(data->target, data->offset + data->block->length, 0, GL_DYNAMIC_DRAW);
+	glBindBuffer(target, buffer);
+	if (*size < block->length) {
+		//TODO: Enable offsets to only update part of a buffer.
+		glBufferData(target, block->length, 0, GL_DYNAMIC_DRAW);
 	}
-	glBufferSubData(data->target, data->offset, data->block->length, data->block->ptr);
-	*data->size = data->block->length;
-
-	DeallocateBlock(data->block);
+	glBufferSubData(target, 0, block->length, block->ptr);
+	*size = block->length;
+	DeallocateBlock(block);
 }
 }
 
-void render::UpdateDynamicVertexBuffer(DynamicVertexBufferHandle handle, const MemoryBlock* data, const ptrdiff_t offset)
+void gl::UpdateDynamicVertexBuffer(VertexBufferHandle handle, const MemoryBlock* data, const ptrdiff_t offset)
 {
 	auto& vb = vertex_buffers[handle.index];
-
-	UpdateDynamicBufferCmd cmd;
-	cmd.block = data;
-	cmd.buffer = &vb.buffer;
-	cmd.offset = offset;
-	cmd.size = &vb.size;
-	cmd.target = GL_ARRAY_BUFFER;
-
-	pre_buffer.Push(cmd);
+	UpdateDynamicBuffer(GL_ARRAY_BUFFER, vb.buffer, data, &vb.size);
 }
 
 #pragma endregion
@@ -1291,216 +1180,132 @@ void render::UpdateDynamicVertexBuffer(DynamicVertexBufferHandle handle, const M
 
 namespace
 {
-void CreateIndexBuffer(Cmd* cmd);
-struct CreateIndexBufferCmd : Cmd
+uint32_t CreateElementBuffer(GLenum usage, render::IndexType type, const MemoryBlock* block)
 {
-	static constexpr DispatchFn DISPATCH = { CreateIndexBuffer };
-	uint32_t index;
-	const MemoryBlock* block;
-	IndexType type;
-	GLenum usage;
-};
-void CreateIndexBuffer(Cmd* cmd)
-{
-	auto data = reinterpret_cast<CreateIndexBufferCmd*>(cmd);
+	auto buffer = index_buffers.Create();
+	*buffer.obj = IndexBuffer{};
 	GLuint ib;
 	auto size = 0;
+	glBindVertexArray(0);
 	glGenBuffers(1, &ib);
-	if (data->block != nullptr) {
+	if (block) {
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ib);
-		glBufferData(GL_ELEMENT_ARRAY_BUFFER, data->block->length, data->block->ptr, data->usage);
-		size = data->block->length;
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, block->length, block->ptr, usage);
+		size = block->length;
 	}
-	index_buffers[data->index].buffer = ib;
+	buffer.obj->buffer = ib;
 
-
-
-	switch (data->type) {
-	case IndexType::UByte:
-		index_buffers[data->index].type = GL_UNSIGNED_BYTE;
-		index_buffers[data->index].num_elements = size;
+	switch (type) {
+	case render::IndexType::UByte:
+		buffer.obj->type = GL_UNSIGNED_BYTE;
+		buffer.obj->num_elements = size;
 		break;
-	case IndexType::UShort:
-		index_buffers[data->index].type = GL_UNSIGNED_SHORT;
-		index_buffers[data->index].num_elements = size / 2;
+	case render::IndexType::UShort:
+		buffer.obj->type = GL_UNSIGNED_SHORT;
+		buffer.obj->num_elements = size / 2;
 		break;
-	case IndexType::UInt:
-		index_buffers[data->index].type = GL_UNSIGNED_INT;
-		index_buffers[data->index].num_elements = size / 4;
+	case render::IndexType::UInt:
+		buffer.obj->type = GL_UNSIGNED_INT;
+		buffer.obj->num_elements = size / 4;
 		break;
 	default:
 		break;
 	}
 
-	if (data->block) {
-		DeallocateBlock(data->block);
+	if (block) {
+		DeallocateBlock(block);
 	}
+
+	return buffer.index;
+}
 }
 
-}
-
-IndexBufferHandle render::CreateIndexBuffer(const MemoryBlock* data, IndexType type)
+IndexBufferHandle gl::CreateIndexBuffer(const MemoryBlock* data, render::IndexType type)
 {
-	auto ib = index_buffers.Create();
-	IndexBufferHandle result{ ib.index };
-
-	CreateIndexBufferCmd cmd;
-	cmd.block = data;
-	cmd.type = type;
-	cmd.index = ib.index;
-	cmd.usage = GL_STATIC_DRAW;
-	pre_buffer.Push(cmd);
-
-	*ib.obj = IndexBuffer{};
+	IndexBufferHandle result{ CreateElementBuffer(GL_STATIC_DRAW, type, data) };
 	return result;
 }
 
-DynamicIndexBufferHandle render::CreateDynamicIndexBuffer(const MemoryBlock* data, IndexType type)
+IndexBufferHandle gl::CreateDynamicIndexBuffer(const MemoryBlock* data, render::IndexType type)
 {
-	auto ib = index_buffers.Create();
-	DynamicIndexBufferHandle result{ ib.index };
-
-	CreateIndexBufferCmd cmd;
-	cmd.block = data;
-	cmd.type = type;
-	cmd.index = ib.index;
-	cmd.usage = GL_DYNAMIC_DRAW;
-	pre_buffer.Push(cmd);
-
-	*ib.obj = IndexBuffer{};
+	IndexBufferHandle result{ CreateElementBuffer(GL_DYNAMIC_DRAW, type, data) };
 	return result;
 }
 
-DynamicIndexBufferHandle render::CreateDynamicIndexBuffer(IndexType type)
+IndexBufferHandle gl::CreateDynamicIndexBuffer(render::IndexType type)
 {
 	return CreateDynamicIndexBuffer(nullptr, type);
 }
 
 namespace
 {
-void UpdateDynamicIndexBuffer(Cmd* cmd);
-struct UpdateDynamicIndexBufferCmd : Cmd
+void UpdateDynamicIndexBuffer(IndexBuffer* ib, const MemoryBlock* block)
 {
-	static constexpr DispatchFn DISPATCH = { UpdateDynamicIndexBuffer };
-	DynamicIndexBufferHandle ib;
-	const MemoryBlock* block;
-	GLintptr offset;
-};
-void UpdateDynamicIndexBuffer(Cmd* cmd)
-{
-	auto data = reinterpret_cast<UpdateDynamicIndexBufferCmd*>(cmd);
-	auto& ib = index_buffers[data->ib.index];
-
+	//TODO: Handle offsets properly.
 	GLint prev_buffer;
 	glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &prev_buffer);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ib.buffer);
-	int previous_size = ib.num_elements;
-	if (ib.type == GL_UNSIGNED_SHORT) {
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ib->buffer);
+	int previous_size = ib->num_elements;
+	if (ib->type == GL_UNSIGNED_SHORT) {
 		previous_size *= 2;
-	} else if (ib.type == GL_UNSIGNED_INT) {
+	} else if (ib->type == GL_UNSIGNED_INT) {
 		previous_size *= 4;
 	}
 
-	if (previous_size < data->offset + data->block->length) {
-		//TODO: Right now, this breaks the use of offset, by not copying the data over.
-		glBufferData(GL_ELEMENT_ARRAY_BUFFER, data->offset + data->block->length, 0, GL_DYNAMIC_DRAW);
+	if (previous_size < block->length) {
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, block->length, 0, GL_DYNAMIC_DRAW);
 	}
-	glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, data->offset, data->block->length, data->block->ptr);
+	glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, block->length, block->ptr);
 
-	switch (ib.type) {
+	switch (ib->type) {
 	case GL_UNSIGNED_BYTE:
-		ib.num_elements = data->block->length;
+		ib->num_elements = block->length;
 		break;
 	case GL_UNSIGNED_SHORT:
-		ib.num_elements = data->block->length / 2;
+		ib->num_elements = block->length / 2;
 		break;
 	case GL_UNSIGNED_INT:
-		ib.num_elements = data->block->length / 4;
+		ib->num_elements = block->length / 4;
 		break;
 	default:
 		break;
 	}
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, prev_buffer);
-	DeallocateBlock(data->block);
-}
+	DeallocateBlock(block);
 }
 
-void render::UpdateDynamicIndexBuffer(DynamicIndexBufferHandle handle, const MemoryBlock* data, const ptrdiff_t offset)
+}
+
+void gl::UpdateDynamicIndexBuffer(IndexBufferHandle handle, const MemoryBlock* data, const ptrdiff_t offset)
 {
-	UpdateDynamicIndexBufferCmd cmd;
-	cmd.block = data;
-	cmd.offset = offset;
-	cmd.ib = handle;
-	pre_buffer.Push(cmd);
+	UpdateDynamicIndexBuffer(&index_buffers[handle.index], data);
 }
 
 #pragma endregion
 
-#pragma region SSBO Functions
+#pragma region Uniform Buffer Functions
 
-SSBOHandle render::CreateShaderStorageBuffer(const MemoryBlock* data)
+BufferHandle gl::CreateBufferObject(const MemoryBlock* data)
 {
-	auto ssbo = shader_storage_buffers.Create();
+	auto buffer = buffer_objects.Create();
+	BufferHandle result{ buffer.index };
+	if (data) {
+		buffer.obj->size = data->length;
+	} else {
+		buffer.obj->size = 0;
+	}
 
-	SSBOHandle result{ ssbo.index };
-
-	CreateBufferCmd cmd;
-	cmd.block = data;
-	cmd.name = &ssbo.obj->buffer;
-	cmd.size = &ssbo.obj->size;
-	cmd.target = GL_SHADER_STORAGE_BUFFER;
-	cmd.usage = GL_DYNAMIC_DRAW;
-	pre_buffer.Push(cmd);
+	//TODO: Do i always want dynamic draw? How do I want to specify this?
+	buffer.obj->buffer = CreateBuffer(data, GL_COPY_WRITE_BUFFER, GL_DYNAMIC_DRAW);
 
 	return result;
 }
 
-void render::UpdateShaderStorageBuffer(SSBOHandle handle, const MemoryBlock* data)
+void rkg::gl::UpdateBufferObject(BufferHandle handle, const MemoryBlock * data)
 {
-	auto& ssbo = shader_storage_buffers[handle.index];
-
-	UpdateDynamicBufferCmd cmd;
-	cmd.block = data;
-	cmd.buffer = &ssbo.buffer;
-	cmd.size = &ssbo.size;
-	cmd.target = GL_SHADER_STORAGE_BUFFER;
-	cmd.offset = 0;
-
-	pre_buffer.Push(cmd);
+	auto& buff = buffer_objects[handle.index];
+	UpdateDynamicBuffer(GL_COPY_WRITE_BUFFER, buff.buffer, data, &buff.size);
 }
-
-AtomicCounterBufferHandle render::CreateAtomicCounterBuffer(const MemoryBlock * data)
-{
-	auto atomic_buffer = atomic_counter_buffers.Create();
-
-	AtomicCounterBufferHandle result{ atomic_buffer.index };
-
-	CreateBufferCmd cmd;
-	cmd.block = data;
-	cmd.name = &atomic_buffer.obj->buffer;
-	cmd.size = &atomic_buffer.obj->size;
-	cmd.target = GL_ATOMIC_COUNTER_BUFFER;
-	cmd.usage = GL_DYNAMIC_DRAW;
-	pre_buffer.Push(cmd);
-
-	return result;
-}
-
-void render::UpdateAtomicCounterBuffer(AtomicCounterBufferHandle h, const MemoryBlock* data)
-{
-	auto& atomic_buffer = atomic_counter_buffers[h.index];
-
-	UpdateDynamicBufferCmd cmd;
-	cmd.block = data;
-	cmd.buffer = &atomic_buffer.buffer;
-	cmd.size = &atomic_buffer.size;
-	cmd.target = GL_ATOMIC_COUNTER_BUFFER;
-	cmd.offset = 0;
-
-	pre_buffer.Push(cmd);
-}
-
-#pragma endregion
 
 #pragma region Texture Functions
 
@@ -1511,12 +1316,12 @@ void GetTextureFormats(TextureFormat f, GLenum* internal_format, GLenum* format,
 	ASSERT(internal_format != nullptr && format != nullptr && type != nullptr);
 
 	switch (f) {
-	case render::TextureFormat::RGB8:
+	case gl::TextureFormat::RGB8:
 		*internal_format = GL_RGB8;
 		*format = GL_RGB;
 		*type = GL_UNSIGNED_BYTE;
 		break;
-	case render::TextureFormat::RGBA8:
+	case gl::TextureFormat::RGBA8:
 		*internal_format = GL_RGBA8;
 		*format = GL_RGBA;
 		*type = GL_UNSIGNED_BYTE;
@@ -1526,104 +1331,69 @@ void GetTextureFormats(TextureFormat f, GLenum* internal_format, GLenum* format,
 	}
 }
 
-void CreateTexture(Cmd* cmd);
-struct CreateTextureCmd : Cmd
+uint32_t CreateTexture(GLenum target, TextureFormat format, uint16_t w, uint16_t h, const MemoryBlock* block)
 {
-	static constexpr DispatchFn DISPATCH = { CreateTexture };
-	uint32_t index;
-	GLenum target;
-	TextureFormat format;
-	uint16_t width;
-	uint16_t height;
-	const MemoryBlock* block;
-};
-void CreateTexture(Cmd* cmd)
-{
-	auto data = reinterpret_cast<CreateTextureCmd*>(cmd);
 	GLuint tex;
 	glGenTextures(1, &tex);
-	glBindTexture(data->target, tex);
+	glBindTexture(target, tex);
 
 	//TODO: Figure out how you want to deal with these params.
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(target, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(target, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
 	//TODO: not always gonna be 2d
 	//Extract these from the texture format.
 	GLenum internal_format;
-	GLenum format;
+	GLenum gl_format;
 	GLenum type;
-	GetTextureFormats(data->format, &internal_format, &format, &type);
+	GetTextureFormats(format, &internal_format, &gl_format, &type);
+	glTexImage2D(target, 0, internal_format, w, h, 0, gl_format, type, block->ptr);
 
-	glTexImage2D(GL_TEXTURE_2D, 0, internal_format, data->width, data->height, 0, format, type, data->block->ptr);
 
-	textures[data->index].format = data->format;
-	textures[data->index].height = data->height;
-	textures[data->index].width = data->width;
-	textures[data->index].name = tex;
-	textures[data->index].target = data->target;
-	DeallocateBlock(data->block);
+	auto texture_obj = textures.Create();
+	auto texture = texture_obj.obj;
+	texture->format = format;
+	texture->height = h;
+	texture->width = w;
+	texture->name = tex;
+	texture->target = target;
+	DeallocateBlock(block);
+
+	return texture_obj.index;
 }
 
 }
 
-TextureHandle render::CreateTexture2D(uint16_t width, uint16_t height, TextureFormat format, const MemoryBlock* data)
+TextureHandle gl::CreateTexture2D(uint16_t width, uint16_t height, TextureFormat format, const MemoryBlock* data)
 {
-	auto tex = textures.Create();
-
-	//TODO: Check that memory block is right size.
-	CreateTextureCmd cmd;
-	cmd.block = data;
-	cmd.format = format;
-	cmd.width = width;
-	cmd.height = height;
-	cmd.target = GL_TEXTURE_2D;
-	cmd.index = tex.index;
-	pre_buffer.Push(cmd);
-
-
-	return TextureHandle{ tex.index };
+	return TextureHandle{ CreateTexture(GL_TEXTURE_2D, format, width, height, data) };
 }
 
 namespace
 {
-void UpdateTexture(Cmd* cmd);
-struct UpdateTextureCmd : Cmd
+void UpdateTexture(Texture* texture, GLenum target, const MemoryBlock* block)
 {
-	static constexpr DispatchFn DISPATCH = { UpdateTexture };
-	TextureHandle handle;
-	const MemoryBlock* block;
-};
-void UpdateTexture(Cmd* cmd)
-{
-	auto data = reinterpret_cast<UpdateTextureCmd*>(cmd);
-	auto& texture = textures[data->handle.index];
-
 	GLenum internal_format;
 	GLenum format;
 	GLenum type;
-	GetTextureFormats(texture.format, &internal_format, &format, &type);
-	glBindTexture(GL_TEXTURE_2D, texture.name);
-	glTexImage2D(GL_TEXTURE_2D, 0, internal_format, texture.width, texture.height, 0, format, type, data->block->ptr);
-	DeallocateBlock(data->block);
+	GetTextureFormats(texture->format, &internal_format, &format, &type);
+	glBindTexture(target, texture->name);
+	glTexImage2D(target, 0, internal_format, texture->width, texture->height, 0, format, type, block->ptr);
+	DeallocateBlock(block);
 }
 }
 
-void render::UpdateTexture2D(TextureHandle handle, const MemoryBlock* data)
+void gl::UpdateTexture2D(TextureHandle handle, const MemoryBlock* data)
 {
-	UpdateTextureCmd cmd;
-	cmd.block = data;
-	cmd.handle = handle;
-	pre_buffer.Push(cmd);
-
+	UpdateTexture(&textures[handle.index], GL_TEXTURE_2D, data);
 }
 #pragma endregion
 
 #pragma region Uniforms
 
-UniformHandle render::CreateUniform(const char * name, UniformType type)
+UniformHandle gl::CreateUniform(const char * name, UniformType type)
 {
 	auto uniform = uniforms.Create();
 	UniformHandle result{ uniform.index };
@@ -1637,7 +1407,7 @@ UniformHandle render::CreateUniform(const char * name, UniformType type)
 	return result;
 }
 
-void render::SetUniform(UniformHandle handle, const void* data, int num)
+void gl::SetUniform(UniformHandle handle, const void* data, int num)
 {
 	auto type = uniforms[handle.index].type;
 	uniform_buffer.Add(handle, type, num, data);
@@ -1647,147 +1417,109 @@ void render::SetUniform(UniformHandle handle, const void* data, int num)
 
 #pragma region Destroy Functions
 
-namespace
+void gl::Destroy(ProgramHandle h)
 {
-void DeleteProgram(Cmd*);
-struct DeleteProgramCmd : Cmd
-{
-	static constexpr DispatchFn DISPATCH = { DeleteProgram };
-	GLuint name;
-};
-void DeleteProgram(Cmd* cmd)
-{
-	auto data = reinterpret_cast<DeleteProgramCmd*>(cmd);
-	glDeleteProgram(data->name);
-}
-}
-
-void render::Destroy(ProgramHandle h)
-{
-	DeleteProgramCmd cmd;
-	cmd.name = programs[h.index].id;
-	post_buffer.Push(cmd);
-
 	//NOTE: Do I want to destroy all the uniforms associated with this program? Probably by default yes.
 	for (int i = 0; i < programs[h.index].num_uniforms; i++) {
-		render::Destroy(programs[h.index].uniform_handles[i]);
+		gl::Destroy(programs[h.index].uniform_handles[i]);
 	}
 
+	glDeleteProgram(programs[h.index].id);
 	programs.Remove(h.index);
 }
 
-namespace
+void gl::Destroy(VertexBufferHandle h)
 {
-void DeleteBuffer(Cmd*);
-struct DeleteBufferCmd : Cmd
-{
-	static constexpr DispatchFn DISPATCH = { DeleteBuffer };
-	GLuint name;
-};
-
-void DeleteBuffer(Cmd* cmd)
-{
-	auto data = reinterpret_cast<DeleteBufferCmd*>(cmd);
-	glDeleteBuffers(1, &data->name);
-}
-
-}
-
-void render::Destroy(VertexBufferHandle h)
-{
-	DeleteBufferCmd cmd;
-	cmd.name = vertex_buffers[h.index].buffer;
-	post_buffer.Push(cmd);
+	glDeleteBuffers(1, &vertex_buffers[h.index].buffer);
 	vertex_buffers.Remove(h.index);
+	vao_cache.Clear();
 }
 
-void	render::Destroy(DynamicVertexBufferHandle h)
-{
-	DeleteBufferCmd cmd;
-	cmd.name = vertex_buffers[h.index].buffer;
-	post_buffer.Push(cmd);
-	vertex_buffers.Remove(h.index);
-}
 
-void	render::Destroy(IndexBufferHandle h)
+void	gl::Destroy(IndexBufferHandle h)
 {
-	DeleteBufferCmd cmd;
-	cmd.name = index_buffers[h.index].buffer;
-	post_buffer.Push(cmd);
+	glDeleteBuffers(1, &index_buffers[h.index].buffer);
 	index_buffers.Remove(h.index);
 }
 
-void	render::Destroy(DynamicIndexBufferHandle h)
-{
-	DeleteBufferCmd cmd;
-	cmd.name = index_buffers[h.index].buffer;
-	post_buffer.Push(cmd);
-	index_buffers.Remove(h.index);
-}
-
-void	render::Destroy(TextureHandle h)
+void	gl::Destroy(TextureHandle h)
 {
 
 }
 
-void render::Destroy(UniformHandle h)
+void gl::Destroy(UniformHandle h)
 {
 	uniforms.Remove(h.index);
 }
 
+void gl::Destroy(BufferHandle h)
+{
+	glDeleteBuffers(1, &buffer_objects[h.index].buffer);
+	buffer_objects.Remove(h.index);
+}
+
 #pragma endregion
 
-void render::SetState(uint64_t flags)
+void gl::SetState(uint64_t flags)
 {
 	current_draw.render_state = flags;
 }
 
-void render::SetVertexBuffer(VertexBufferHandle h, uint32_t first_vertex, uint32_t num_verts)
+void gl::SetVertexBuffer(VertexBufferHandle h, uint32_t first_vertex, uint32_t num_verts)
 {
 	current_draw.vertex_buffer = h.index;
 	current_draw.vertex_offset = first_vertex;
 	current_draw.vertex_count = num_verts;
 }
 
-void render::SetVertexBuffer(DynamicVertexBufferHandle h, uint32_t first_vertex, uint32_t num_verts)
-{
-	current_draw.vertex_buffer = h.index;
-	current_draw.vertex_offset = first_vertex;
-	current_draw.vertex_count = num_verts;
-}
-
-void render::SetIndexBuffer(IndexBufferHandle h, uint32_t offset, uint32_t num_elements)
+void gl::SetIndexBuffer(IndexBufferHandle h, uint32_t offset, uint32_t num_elements)
 {
 	current_draw.index_buffer = h.index;
 	current_draw.index_offset = offset;
 	current_draw.index_count = num_elements;
 }
 
-void render::SetIndexBuffer(DynamicIndexBufferHandle h, uint32_t offset, uint32_t num_elements)
-{
-	current_draw.index_buffer = h.index;
-	current_draw.index_offset = offset;
-	current_draw.index_count = num_elements;
-}
-
-void render::SetTexture(TextureHandle tex, UniformHandle sampler, uint16_t texture_unit)
+void gl::SetTexture(TextureHandle tex, UniformHandle sampler, uint16_t texture_unit)
 {
 	GLint unit = texture_unit;
 	SetUniform(sampler, &unit);
 	current_rendercmd.textures[texture_unit] = tex;
 }
 
-void render::SetShaderStorageBuffer(SSBOHandle h, uint32_t binding)
+namespace
 {
-	current_rendercmd.ssbos[binding] = shader_storage_buffers[h.index].buffer;
+GLenum GetBufferTargetEnum(BufferTarget target)
+{
+	switch (target) {
+	case rkg::gl::BufferTarget::SHADER_STORAGE:
+		return GL_SHADER_STORAGE_BUFFER;
+		break;
+	case rkg::gl::BufferTarget::UNIFORM:
+		return GL_UNIFORM_BUFFER;
+		break;
+	case rkg::gl::BufferTarget::ATOMIC_COUNTER:
+		return GL_ATOMIC_COUNTER_BUFFER;
+		break;
+	default:
+		ASSERT(false);
+		break;
+	}
+	return 0;
+}
 }
 
-void render::SetAtomicCounterBuffer(AtomicCounterBufferHandle h, uint32_t binding)
+void gl::SetBufferObject(BufferHandle h, BufferTarget target, uint32_t binding)
 {
-	current_rendercmd.atomic_counters[binding] = atomic_counter_buffers[h.index].buffer;
+	Expects(binding < MAX_BUFFER_BINDINGS);
+	RenderCmd::BufferBinding bind;
+	bind.buffer_object = buffer_objects[h.index].buffer;
+	bind.offset = 0;
+	bind.size = buffer_objects[h.index].size;
+	bind.target = GetBufferTargetEnum(target);
+	current_rendercmd.buffers[binding] = std::move(bind);
 }
 
-void render::SetScissor(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
+void gl::SetScissor(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
 {
 	current_draw.scissor[0] = x;
 	current_draw.scissor[1] = y;
@@ -1795,7 +1527,7 @@ void render::SetScissor(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
 	current_draw.scissor[3] = h;
 }
 
-void render::Submit(uint8_t layer, ProgramHandle program, uint32_t depth, bool preserve_state)
+void gl::Submit(uint8_t layer, ProgramHandle program, uint32_t depth, bool preserve_state)
 {
 	//Create a sort key for this draw call
 	Key key;
@@ -1826,7 +1558,7 @@ void render::Submit(uint8_t layer, ProgramHandle program, uint32_t depth, bool p
 	current_rendercmd.uniform_start = uniform_end;
 }
 
-void render::SubmitCompute(uint8_t layer, ProgramHandle program, uint16_t num_x, uint16_t num_y, uint16_t num_z)
+void gl::SubmitCompute(uint8_t layer, ProgramHandle program, uint16_t num_x, uint16_t num_y, uint16_t num_z)
 {
 	Key key;
 	key.layer = layer;
@@ -1863,19 +1595,14 @@ void render::SubmitCompute(uint8_t layer, ProgramHandle program, uint16_t num_x,
 namespace
 {
 
-struct
-{
-	unsigned int pre_buffer_end;
-	unsigned int post_buffer_end;
-} FrameData;
-
 GLFWwindow* current_window = nullptr;
 
-void Render()
+}
+
+void gl::Render()
 {
 	//Do any pre-render stuff wrt resources that need management.
-	pre_buffer.Execute(FrameData.pre_buffer_end);
-
+	frame++;
 	SortKeys();
 
 	//Need to store the current state of the important stuff
@@ -1899,7 +1626,7 @@ void Render()
 
 
 	unsigned int num_commands = key_index;
-	glClearColor(0.f, 0.f, 0.f, 1.f);
+	glClearColor(1.f, 1.f, 1.f, 1.f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	for (unsigned int command_index = 0; command_index < num_commands; command_index++) {
@@ -1930,19 +1657,10 @@ void Render()
 			}
 		}
 
-		//Bind any SSBOs:
-		for (int ssbo_binding = 0; ssbo_binding < MAX_SSBO_BINDINGS; ssbo_binding++) {
-			if (cmd->ssbos[ssbo_binding] != UINT32_MAX) {
-				glBindBufferBase(GL_SHADER_STORAGE_BUFFER,
-								 ssbo_binding,
-								 cmd->ssbos[ssbo_binding]);
-			}
-		}
-
-		//Bind any atomic counters. May be able to unify the buffer bindings.
-		for (int binding = 0; binding < MAX_ATOMIC_COUNTER_BINDINGS; binding++) {
-			if (cmd->atomic_counters[binding] != UINT32_MAX) {
-				glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, binding, cmd->atomic_counters[binding]);
+		for (int binding = 0; binding < MAX_BUFFER_BINDINGS; binding++) {
+			if (cmd->buffers[binding].buffer_object != UINT32_MAX && cmd->buffers[binding].size != 0) {
+				auto& buffer = cmd->buffers[binding];
+				glBindBufferRange(buffer.target, binding, buffer.buffer_object, buffer.offset, buffer.size);
 			}
 		}
 
@@ -2038,6 +1756,17 @@ void Render()
 				const int primitive_index = (draw_cmd->render_state & RenderState::PRIMITIVE_MASK) >> RenderState::PRIMITIVE_SHIFT;
 				primitive_type = primitive_types[primitive_index];
 			}
+
+			//Polygon mode.
+			if ((raster_state ^ draw_cmd->render_state) & RenderState::POLYGON_MODE_MASK != 0) {
+				if ((draw_cmd->render_state & RenderState::POLYGON_MODE_MASK) == RenderState::POLYGON_MODE_LINE) {
+					glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+				}
+				else {
+					glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+				}
+			}
+
 			raster_state = draw_cmd->render_state;
 		}
 
@@ -2066,13 +1795,14 @@ void Render()
 				auto vao_hash = hash.Finish();
 
 				//Attempt to lookup vao.
-				static GLCache<MAX_VERTEX_ARRAY_OBJECTS> vao_cache;
+				
 				auto vao = vao_cache.Get(vao_hash);
 				if (vao != vao_cache.INVALID_INDEX) {
 					glBindVertexArray(vao);
 				} else {
 					//Create a new VAO for this data.
 					glGenVertexArrays(1, &vao);
+
 					vao_cache.Add(vao_hash, vao);
 					glBindVertexArray(vao);
 					auto& vertex_buffer = vertex_buffers[draw_cmd->vertex_buffer];
@@ -2086,8 +1816,12 @@ void Render()
 						glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, index_buffer.buffer);
 					}
 					auto vertex_size = vertex_layout.SizeOfVertex();
-					for (int i = 0; i < vertex_layout.num_attributes; i++) {
-						auto attrib_loc = glGetAttribLocation(program->id, vertex_layout.names[i]);
+					auto num_verts = vertex_buffer.size / vertex_size;
+					uint32_t attrib_offset = 0;
+					for (int i = 0; i < vertex_layout.MAX_ATTRIBUTES; i++) {
+						if (vertex_layout.types[i] == render::VertexLayout::AttributeType::UNUSED) {
+							continue;
+						}
 						/*
 						Pack attribute info into 8 bits:
 						76543210
@@ -2097,13 +1831,21 @@ void Render()
 						t - type
 						s - number
 						*/
-						auto attrib = vertex_layout.attribs[i];
-						bool normalized = (attrib & 0x40) >> 6;
-						GLuint size = (attrib & 0x03) + 1;
-						auto type = (VertexLayout::AttributeType::Enum)((attrib & 0x3C) >> 2);
 
-						glVertexAttribPointer(attrib_loc, size, GetGLEnum(type), normalized, vertex_size, (void*)vertex_layout.offset[i]);
+						auto count = vertex_layout.counts[i];
+						uint8_t attrib_loc = (count & 0b0111'1100) >> 2;
+						bool normalized = (count & 0b1000'0000) >> 7;
+						GLuint size = (count & 0b0000'0011) + 1;
+						glVertexAttribPointer(attrib_loc, size,
+											  GetGLEnum(vertex_layout.types[i]), normalized,
+											  (vertex_layout.interleaved) ? vertex_size : 0,
+											  (GLvoid*)attrib_offset);
 						glEnableVertexAttribArray(attrib_loc);
+						if (vertex_layout.interleaved) {
+							attrib_offset += size*render::VertexLayout::SizeOfType(vertex_layout.types[i]);
+						} else {
+							attrib_offset += num_verts*size*render::VertexLayout::SizeOfType(vertex_layout.types[i]);
+						}
 					}
 				}
 			}
@@ -2130,7 +1872,7 @@ void Render()
 			if (draw_cmd->index_count != UINT32_MAX) {
 				num_elements = draw_cmd->index_count;
 			}
-			
+
 			glDrawElementsBaseVertex(primitive_type, num_elements,
 									 ib.type,
 									 (void*)offset,
@@ -2149,16 +1891,14 @@ void Render()
 	key_index = 0;
 	render_buffer_count = 0;
 	compute_buffer_count = 0;
-	post_buffer.Execute(FrameData.post_buffer_end);
 	uniform_buffer.Clear();
 	FreeMemory();
-}
+	current_rendercmd.uniform_start = 0;
+
 }
 
-void render::Initialize(GLFWwindow* window)
+void gl::InitializeBackend(GLFWwindow* window)
 {
-	glfwMakeContextCurrent(nullptr);
-
 	glfwMakeContextCurrent(window);
 	current_window = window;
 	LoadGLFunctions();
@@ -2169,7 +1909,7 @@ void render::Initialize(GLFWwindow* window)
 #endif
 
 	glEnable(GL_DEPTH_TEST);
-	//glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 	glEnable(GL_SCISSOR_TEST);
 	glEnable(GL_BLEND);
 	glBlendEquation(GL_FUNC_ADD);
@@ -2177,18 +1917,4 @@ void render::Initialize(GLFWwindow* window)
 	glEnable(GL_CULL_FACE);
 	glCullFace(GL_BACK);
 	return;
-}
-
-void render::EndFrame()
-{
-	FrameData.pre_buffer_end = pre_buffer.GetWritePosition();
-	FrameData.post_buffer_end = post_buffer.GetWritePosition();
-	frame++;
-
-	Render();
-
-	current_rendercmd.uniform_start = 0;
-	
-
-	glfwSwapBuffers(current_window);
 }

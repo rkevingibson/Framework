@@ -8,7 +8,7 @@
 #define GLFW_EXPOSE_NATIVE_WGL
 #include "External/GLFW/glfw3native.h"
 #include "External/imgui/imgui.h"
-#include "Renderer/Renderer.h"
+#include "Renderer/RenderInterface.h"
 #include "Utilities/GuiBasics.h"
 #include "Utilities/Utilities.h"
 #include "Utilities/Input.h"
@@ -28,8 +28,9 @@ namespace ecs {
 
 		void ResizeCallback(GLFWwindow* win, int w, int h)
 		{
-			rkg::Input::ScreenSize = { (float)w, (float)h };
-			rkg::render::Resize(w, h);
+			
+			rkg::Input::ResizeScreen(w, h);
+			rkg::render::ResizeWindow(w, h);
 		}
 
 		//TODO: Figure out how to store this user input to be used later by the systems.
@@ -89,13 +90,13 @@ namespace ecs {
 				return nullptr;
 			}
 			glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-			glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
+			glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
 			glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 			glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 			glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
 			glfwWindowHint(GLFW_SAMPLES, 2);
 
-			Input::ScreenSize = Vec2(600, 400);
+			Input::ScreenSize = Vec2(1920, 1080);
 			GLFWwindow* window = glfwCreateWindow(Input::ScreenSize.x, Input::ScreenSize.y, "Material Editor", nullptr, nullptr);
 			
 			if (!window)
@@ -127,10 +128,9 @@ namespace ecs {
 			exit(EXIT_FAILURE);
 		}
 
-		rkg::render::Initialize(window);
+		rkg::render::Initialize(window); //Spawn the render thread.
 		//TODO: Error callback
 		rkg::InitializeImgui(window);
-
 		for (auto system : systems) {
 			system->Initialize();
 		}
@@ -138,7 +138,7 @@ namespace ecs {
 		running = true;
 		double current_time = glfwGetTime();
 		double accumulator = 0.0;
-		const double fixed_timestep = 0.01;
+		const double fixed_timestep = 0.05;
 
 		while (!glfwWindowShouldClose(window) && running)
 		{

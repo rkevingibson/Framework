@@ -1,6 +1,9 @@
 #include <ECS/DefaultSystems.h>
 #include <Utilities/Input.h>
 #include <External/imgui/imgui.h>
+#include <Renderer/ArcballCamera.h>
+#include <Renderer/RenderInterface.h>
+
 
 using namespace rkg;
 
@@ -72,4 +75,41 @@ void DeveloperConsole::Update(double delta_time)
 void DeveloperConsole::AddCommand(const char* name, CommandFn fn)
 {
 	command_list[name] = fn;
+}
+
+
+ArcballSystem::ArcballSystem() = default;
+ArcballSystem::~ArcballSystem() = default;
+
+void ArcballSystem::Initialize()
+{
+	arcball = std::make_unique<ArcballCamera>();
+	arcball->EndArcball();
+	auto resize = [](int w, int h, void* data) {
+		ArcballCamera* arcball = reinterpret_cast<ArcballCamera*>(data);
+		arcball->screen_size = Vec2(w, h);
+	};
+	Input::RegisterResizeCallback(resize, arcball.get());
+	arcball->screen_size = Input::ScreenSize;
+}
+
+
+void ArcballSystem::Update(double delta_time)
+{
+	if (Input::MouseButtonPressed[0]) {
+		arcball->StartArcball(Input::MousePosition);
+	}
+	else if (Input::MouseButtonReleased[0]) {
+		arcball->EndArcball();
+	}
+
+	arcball->UpdateArcball(Input::MousePosition);
+	arcball->distance -= zoom_speed*Input::MouseWheelDelta.y;
+	render::SetViewTransform(arcball->GetViewMatrix());
+}
+
+void ArcballSystem::SetTarget(const Vec3& target, float distance) 
+{
+	arcball->target = target;
+	arcball->distance = distance;
 }
