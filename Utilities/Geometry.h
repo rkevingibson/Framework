@@ -59,6 +59,10 @@ namespace rkg {
 			lhs -= rhs;
 			return lhs;
 		}
+		//Vector negation
+		inline friend Vec2 operator-(const Vec2& rhs) noexcept {
+			return Vec2(-rhs.x, -rhs.y);
+		}
 		//Scalar multiplication
 		inline friend Vec2 operator*(Vec2 lhs, float rhs) noexcept {
 			lhs *= rhs;
@@ -137,6 +141,10 @@ namespace rkg {
 		inline friend Vec3 operator-(Vec3 lhs, const Vec3& rhs) noexcept {
 			lhs -= rhs;
 			return lhs;
+		}
+		//Vector negation
+		inline friend Vec3 operator-(const Vec3& rhs) noexcept {
+			return Vec3(-rhs.x, -rhs.y, -rhs.z);
 		}
 		//Scalar multiplication
 		inline friend Vec3 operator*(Vec3 lhs, float rhs) noexcept {
@@ -226,6 +234,10 @@ namespace rkg {
 		friend Vec4 operator-(Vec4 lhs, const Vec4& rhs) noexcept {
 			lhs -= rhs;
 			return lhs;
+		}
+		//Vector negation
+		inline friend Vec4 operator-(const Vec4& rhs) noexcept {
+			return Vec4(-rhs.x, -rhs.y, -rhs.z, -rhs.w);
 		}
 		//Scalar multiplication
 		friend Vec4 operator*(Vec4 lhs, float rhs) noexcept {
