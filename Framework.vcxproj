@@ -129,6 +129,7 @@
     <ClCompile Include="Renderer\Mesh.cpp" />
     <ClCompile Include="renderer\Renderer.cpp" />
     <ClCompile Include="renderer\RenderInterface.cpp" />
+    <ClCompile Include="Renderer\StateGroup.cpp" />
     <ClCompile Include="utilities\Allocators.cpp" />
     <ClCompile Include="utilities\CommandStream.cpp" />
     <ClCompile Include="utilities\Filesystem.cpp" />
