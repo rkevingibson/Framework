@@ -48,10 +48,10 @@ class Mesh
 public:
 
 	Mesh() = default;
-	Mesh(const Mesh&) = delete;
+	Mesh(const Mesh&);
 	Mesh(const Eigen::Matrix3Xf& V, const Eigen::Matrix3Xi& F);
 
-	Mesh& operator=(const Mesh&) = delete;
+	Mesh& operator=(const Mesh&);
 	Mesh(Mesh&&) noexcept;
 	Mesh& operator=(Mesh&&) noexcept;
 	~Mesh();
@@ -203,6 +203,7 @@ private:
 		
 	*/
 	friend Mesh ApplyPerFaceColor(const Mesh& mesh, const std::vector<Vec4>& colors);
+	friend Mesh AddPerVertexColor(const Mesh& mesh, const std::vector<Vec4>& colors);
 
 
 	//TODO: Fix this crappy attribute code. Let us set how large each attribute is, and treat as a byte array. 

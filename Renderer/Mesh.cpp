@@ -21,6 +21,20 @@ namespace
 Mallocator mesh_allocator;
 }
 
+Mesh::Mesh(const Mesh& src) :
+	num_verts_{src.num_verts_},
+	num_indices_{ src.num_indices_ },
+	active_attributes_{ src.active_attributes_ },
+	attribute_offset_{src.attribute_offset_},
+	vertex_size_{src.vertex_size_}
+{
+	//Copy the two data blocks.
+	vertex_block_ = mesh_allocator.Allocate(src.vertex_block_.length);
+	index_block_ = mesh_allocator.Allocate(src.index_block_.length);
+	memcpy_s(vertex_block_.ptr, vertex_block_.length, src.vertex_block_.ptr, src.vertex_block_.length);
+	memcpy_s(index_block_.ptr, index_block_.length, src.index_block_.ptr, src.index_block_.length);
+}
+
 Mesh::Mesh(const Eigen::Matrix3Xf & V, const Eigen::Matrix3Xi & F)
 {
 	SetMeshAttributes(MeshAttributes::POSITION | MeshAttributes::NORMAL);
@@ -32,6 +46,23 @@ Mesh::Mesh(const Eigen::Matrix3Xf & V, const Eigen::Matrix3Xi & F)
 	num_indices_ = F.size();
 	memcpy_s(index_block_.ptr, index_block_.length, F.data(), F.size() * sizeof(int));
 	ComputeNormals();
+}
+
+
+
+Mesh& Mesh::operator=(const Mesh & src)
+{
+	num_verts_ = src.num_verts_ ;
+	num_indices_ = src.num_indices_;
+	active_attributes_ = src.active_attributes_;
+	attribute_offset_ = src.attribute_offset_;
+	vertex_size_ = src.vertex_size_;
+	mesh_allocator.Reallocate(vertex_block_, src.vertex_block_.length);
+	mesh_allocator.Reallocate(index_block_, src.index_block_.length);
+	memcpy_s(vertex_block_.ptr, vertex_block_.length, src.vertex_block_.ptr, src.vertex_block_.length);
+	memcpy_s(index_block_.ptr, index_block_.length, src.index_block_.ptr, src.index_block_.length);
+
+	return *this;
 }
 
 Mesh::Mesh(Mesh&& src) noexcept
@@ -531,6 +562,18 @@ Mesh ApplyPerFaceColor(const Mesh& mesh, const std::vector<Vec4>& colors)
 	//TODO: Support general vertex layouts.
 
 	result.ComputeNormals();
+	return result;
+}
+
+Mesh AddPerVertexColor(const Mesh & mesh, const std::vector<Vec4>& colors)
+{
+	Mesh result = mesh;
+	result.SetMeshAttributes(mesh.active_attributes_ | MeshAttributes::COLOR0);
+	auto dst_colors = result.GetVec4Attribute(MeshAttributes::COLOR0);
+	Expects(result.num_verts_ == colors.size());
+	for (int v = 0; v < result.num_verts_; v++) {
+		dst_colors[v] = colors[v];
+	}
 	return result;
 }
 
