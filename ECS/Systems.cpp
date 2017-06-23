@@ -1,6 +1,7 @@
 #include "Systems.h"
 
 #include <vector>
+#include <thread>
 
 #define NOMINMAX
 #include "External/GLFW/glfw3.h"
@@ -12,6 +13,7 @@
 #include "Utilities/GuiBasics.h"
 #include "Utilities/Utilities.h"
 #include "Utilities/Input.h"
+#include "ECS/JobSystem.h"
 
 namespace rkg {
 namespace ecs {
@@ -131,6 +133,8 @@ namespace ecs {
 		rkg::render::Initialize(window); //Spawn the render thread.
 		//TODO: Error callback
 		rkg::InitializeImgui(window);
+		ecs::InitializeWorkerThreads(std::thread::hardware_concurrency() - 2);
+
 		for (auto system : systems) {
 			system->Initialize();
 		}
@@ -153,6 +157,7 @@ namespace ecs {
 			rkg::ImguiNewFrame();
 			
 			
+			
 			double new_time = glfwGetTime();
 			double frame_time = new_time - current_time;
 			current_time = new_time;
@@ -171,9 +176,12 @@ namespace ecs {
 			//Do render here... it should probably be a hardcoded system.
 			ImGui::Render();
 			rkg::render::EndFrame();
+
+			//Reset job system allocations.
+			ecs::ClearJobs();
 		}
 
-
+		ecs::ShutdownWorkerThreads();
 		glfwDestroyWindow(window);
 		glfwTerminate();
 	}
