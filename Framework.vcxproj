@@ -118,7 +118,7 @@
   <ItemGroup>
     <ClCompile Include="ecs\DefaultSystems.cpp" />
     <ClCompile Include="ecs\Entities.cpp" />
-    <ClCompile Include="ecs\Jobs.cpp" />
+    <ClCompile Include="ECS\JobSystem.cpp" />
     <ClCompile Include="ecs\Systems.cpp" />
     <ClCompile Include="external\imgui\extra_fonts\binary_to_compressed_c.cpp" />
     <ClCompile Include="external\imgui\imgui.cpp" />
@@ -141,7 +141,7 @@
   <ItemGroup>
     <ClInclude Include="ecs\DefaultSystems.h" />
     <ClInclude Include="ecs\Entities.h" />
-    <ClInclude Include="ecs\Jobs.h" />
+    <ClInclude Include="ECS\JobSystem.h" />
     <ClInclude Include="ecs\Systems.h" />
     <ClInclude Include="external\eigen\src\cholesky\LDLT.h" />
     <ClInclude Include="external\eigen\src\cholesky\LLT.h" />

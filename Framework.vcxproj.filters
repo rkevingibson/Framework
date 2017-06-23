@@ -21,9 +21,6 @@
     <ClCompile Include="ecs\Entities.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="ecs\Jobs.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="ecs\Systems.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -78,15 +75,15 @@
     <ClCompile Include="Renderer\StateGroup.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="ECS\JobSystem.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ecs\DefaultSystems.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="ecs\Entities.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="ecs\Jobs.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="ecs\Systems.h">
@@ -987,6 +984,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="External\tiny_obj_loader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ECS\JobSystem.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
