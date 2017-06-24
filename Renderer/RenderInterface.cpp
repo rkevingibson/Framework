@@ -331,95 +331,51 @@ void Initialize(GLFWwindow* window)
 
 void ResizeWindow(int w, int h)
 {
-	struct CmdType : Cmd
-	{
-		int w, h;
-	};
-	auto cmd = render_commands.Add<CmdType>();
-	cmd->w = w;
-	cmd->h = h;
-	cmd->dispatch = [](Cmd* cmd) {
-		auto data = reinterpret_cast<CmdType*>(cmd);
-		glViewport(0, 0, data->w, data->h);
-	};
+	auto cmd = render_commands.Add([=]() {
+		glViewport(0, 0, w, h);
+	});
 }
 
 RenderResource CreateGeometry(const MemoryBlock * vertex_data, const VertexLayout & layout, const MemoryBlock * index_data, IndexType type)
 {
+	//Need to reserve handle now so I have something to return.
+	auto geom = CreateHandle(geometries.ReserveIndex(), ResourceType::GEOMETRY);
+	
+	auto cmd = render_commands.Add([=]() {
+		auto vb = gl::CreateVertexBuffer(vertex_data, layout);
+		auto ib = gl::CreateIndexBuffer(index_data, type);
 
-	struct CmdType : Cmd
-	{
-		const MemoryBlock* vertex_data;
-		VertexLayout layout;
-		const MemoryBlock* index_data;
-		IndexType type;
+		auto geometry = geometries.Add(geom);
 
-		RenderResource geom;
-	};
+		geometry->index_buffer = ib;
+		geometry->vertex_buffer = vb;
+	});
 
-	auto cmd = render_commands.Add<CmdType>();
-	cmd->vertex_data = vertex_data;
-	cmd->layout = layout;
-	cmd->index_data = index_data;
-	cmd->type = type;
-
-	cmd->geom = CreateHandle(geometries.ReserveIndex(), ResourceType::GEOMETRY);
-	cmd->dispatch = [](Cmd* cmd) {
-		auto data = reinterpret_cast<CmdType*>(cmd);
-		auto vb = gl::CreateVertexBuffer(data->vertex_data, data->layout);
-		auto ib = gl::CreateIndexBuffer(data->index_data, data->type);
-
-		auto geom = geometries.Add(data->geom);
-
-		geom->index_buffer = ib;
-		geom->vertex_buffer = vb;
-	};
-
-	return cmd->geom;
+	return geom;
 }
 
 void UpdateGeometry(const RenderResource geometry_handle, const MemoryBlock * vertex_data, const MemoryBlock * index_data)
 {
 	Expects(GetResourceType(geometry_handle) == ResourceType::GEOMETRY);
 
-	struct CmdType : Cmd
-	{
-		RenderResource geometry;
-		const MemoryBlock* vertex_data;
-		const MemoryBlock* index_data;
-	};
-
-	auto cmd = render_commands.Add<CmdType>();
-	cmd->geometry = geometry_handle;
-	cmd->vertex_data = vertex_data;
-	cmd->index_data = index_data;
-	cmd->dispatch = [](Cmd* cmd) {
-		auto data = reinterpret_cast<CmdType*>(cmd);
-		auto& geom = geometries[data->geometry];
-		gl::UpdateDynamicVertexBuffer(geom.vertex_buffer, data->vertex_data);
-		if (data->index_data) {
-			gl::UpdateDynamicIndexBuffer(geom.index_buffer, data->index_data);
+	auto cmd = render_commands.Add([=]() {
+		auto& geom = geometries[geometry_handle];
+		gl::UpdateDynamicVertexBuffer(geom.vertex_buffer, vertex_data);
+		if (index_data) {
+			gl::UpdateDynamicIndexBuffer(geom.index_buffer, index_data);
 		}
-	};
+	});
 }
 
 
 void DeleteGeometry(RenderResource geometry)
 {
 	Expects(GetResourceType(geometry) == ResourceType::GEOMETRY);
-	struct CmdType : Cmd
-	{
-		RenderResource geom;
-	};
-
-	auto cmd = postrender_commands.Add<CmdType>();
-	cmd->geom = geometry;
-	cmd->dispatch = [](Cmd* cmd) {
-		auto data = reinterpret_cast<CmdType*>(cmd);
-		gl::Destroy(geometries[data->geom].index_buffer);
-		gl::Destroy(geometries[data->geom].vertex_buffer);
-		geometries.Remove(data->geom);
-	};
+	auto cmd = postrender_commands.Add([=]() {
+		gl::Destroy(geometries[geometry].index_buffer);
+		gl::Destroy(geometries[geometry].vertex_buffer);
+		geometries.Remove(geometry);
+	});
 }
 
 RenderResource CreateMesh(const RenderResource geometry, const RenderResource material)
@@ -427,210 +383,106 @@ RenderResource CreateMesh(const RenderResource geometry, const RenderResource ma
 	Expects(GetResourceType(geometry) == ResourceType::GEOMETRY);
 	Expects(GetResourceType(material) == ResourceType::MATERIAL);
 
-	struct CmdType :Cmd
-	{
-		RenderResource geometry;
-		RenderResource material;
-		RenderResource mesh;
-	};
-
-	auto cmd = render_commands.Add<CmdType>();
-	cmd->geometry = geometry;
-	cmd->material = material;
-	cmd->mesh = CreateHandle(meshes.ReserveIndex(), ResourceType::MESH);
-	cmd->dispatch = [](Cmd* cmd) {
-		auto data = reinterpret_cast<CmdType*>(cmd);
-		auto mesh = meshes.Add(data->mesh);
-		mesh->geometry = data->geometry;
-		mesh->material = data->material;
+	auto mesh_handle = CreateHandle(meshes.ReserveIndex(), ResourceType::MESH);
+	render_commands.Add([=]() {
+		auto mesh = meshes.Add(mesh_handle);
+		mesh->geometry = geometry;
+		mesh->material = material;
 		mesh->uniform_buffer = gl::CreateBufferObject();
-	};
+	});
 
-	return cmd->mesh;
+	return mesh_handle;
 }
 
 void SetMeshVisibility(const RenderResource mesh, bool visible)
 {
 	Expects(GetResourceType(mesh) == ResourceType::MESH);
-	struct CmdType : Cmd
-	{
-		RenderResource mesh;
-		bool visible;
-	};
-
-	auto cmd = render_commands.Add<CmdType>();
-	cmd->mesh = mesh;
-	cmd->visible = visible;
-	cmd->dispatch = [](Cmd* cmd) {
-		auto data = reinterpret_cast<CmdType*>(cmd);
-		meshes[data->mesh].visible = data->visible;
-	};
+	render_commands.Add([=]() {
+		meshes[mesh].visible = visible;
+	});
 }
 
 void SetMeshTwoSided(const RenderResource mesh, bool two_sided)
 {
 	Expects(GetResourceType(mesh) == ResourceType::MESH);
-	struct CmdType : Cmd
-	{
-		RenderResource mesh;
-		bool two_sided;
-	};
-
-	auto cmd = render_commands.Add<CmdType>();
-	cmd->mesh = mesh;
-	cmd->two_sided = two_sided;
-	cmd->dispatch = [](Cmd* cmd) {
-		auto data = reinterpret_cast<CmdType*>(cmd);
-		meshes[data->mesh].two_sided = data->two_sided;
-	};
+	render_commands.Add([=]() {
+		meshes[mesh].two_sided = two_sided;
+	});
 }
 
 void SetMeshDrawWireframe(const RenderResource mesh, bool wireframe)
 {
 	Expects(GetResourceType(mesh) == ResourceType::MESH);
-	struct CmdType : Cmd
-	{
-		RenderResource mesh;
-		bool wireframe;
-	};
-
-	auto cmd = render_commands.Add<CmdType>();
-	cmd->mesh = mesh;
-	cmd->wireframe = wireframe;
-	cmd->dispatch = [](Cmd* cmd) {
-		auto data = reinterpret_cast<CmdType*>(cmd);
-		meshes[data->mesh].draw_wireframe = data->wireframe;
-	};
+	render_commands.Add([=]() {
+		meshes[mesh].draw_wireframe = wireframe;
+	});
 }
 
-void DeleteMesh(const RenderResource mesh)
+void DeleteMesh(const RenderResource mesh_handle)
 {
-	Expects(GetResourceType(mesh) == ResourceType::MESH);
-	struct CmdType : Cmd
-	{
-		RenderResource mesh;
-	};
-
-	auto cmd = postrender_commands.Add<CmdType>();
-	cmd->mesh = mesh;
-	cmd->dispatch = [](Cmd* cmd) {
-		auto data = reinterpret_cast<CmdType*>(cmd);
-		auto& mesh = meshes[data->mesh];
+	Expects(GetResourceType(mesh_handle) == ResourceType::MESH);
+	postrender_commands.Add([=]() {
+		auto& mesh = meshes[mesh_handle];
 		gl::Destroy(mesh.uniform_buffer);
-		meshes.Remove(data->mesh);
-	};
+		meshes.Remove(mesh_handle);
+	});
 }
 
-void SetModelTransform(const RenderResource mesh, const Mat4& matrix)
+void SetModelTransform(const RenderResource mesh_handle, const Mat4& matrix)
 {
-	Expects(GetResourceType(mesh) == ResourceType::MESH);
-
-	struct CmdType : Cmd
-	{
-		RenderResource mesh;
-		Mat4 mat;
-	};
-
-	auto cmd = render_commands.Add<CmdType>();
-	cmd->mat = matrix;
-	cmd->mesh = mesh;
-	cmd->dispatch = [](Cmd* cmd) {
-		auto data = reinterpret_cast<CmdType*>(cmd);
-		auto& mesh = meshes[data->mesh];
-		mesh.mesh_uniforms.M = data->mat;
-	};
+	Expects(GetResourceType(mesh_handle) == ResourceType::MESH);
+	render_commands.Add([=]() {
+		auto& mesh = meshes[mesh_handle];
+		mesh.mesh_uniforms.M = matrix;
+	});
 }
 
 RenderResource CreateMaterial(const MemoryBlock* vertex_shader, const MemoryBlock* frag_shader)
 {
-	struct CmdType : Cmd
-	{
-		const MemoryBlock* vert_shader;
-		const MemoryBlock* frag_shader;
-		RenderResource mat;
-	};
-
-	auto cmd = render_commands.Add<CmdType>();
-	cmd->vert_shader = vertex_shader;
-	cmd->frag_shader = frag_shader;
-	cmd->mat = CreateHandle(materials.ReserveIndex(), ResourceType::MATERIAL);
-	cmd->dispatch = [](Cmd* cmd) {
-		auto data = reinterpret_cast<CmdType*>(cmd);
-		auto material = materials.Add(data->mat);
+	auto mat = CreateHandle(materials.ReserveIndex(), ResourceType::MATERIAL);
+	render_commands.Add([=]() {
+		auto material = materials.Add(mat);
 		material->uniform_buffer = gl::CreateBufferObject();
-		material->program = gl::CreateProgram(data->vert_shader, data->frag_shader);
+		material->program = gl::CreateProgram(vertex_shader, frag_shader);
 		gl::GetUniformBlockInfo(material->program, "MaterialBlock", &material->block);
-	};
+	});
 
-	return cmd->mat;
+	return mat;
 }
 
-void SetMaterialParameter(const RenderResource material, const char* name, const void* value, size_t size)
+void SetMaterialParameter(const RenderResource mat, const char* name, const void* value, size_t size)
 {
-	struct CmdType :Cmd
-	{
-		RenderResource mat;
-		const char* name;
-		const MemoryBlock* block;
-	};
-
-	auto cmd = render_commands.Add<CmdType>();
-	cmd->block = gl::AllocAndCopy(value, size);
-	cmd->mat = material;
-	cmd->name = name; //TODO: THIS IS WRONG!!!!
-	cmd->dispatch = [](Cmd* cmd) {
-		auto data = reinterpret_cast<CmdType*>(cmd);
-		auto& material = materials[data->mat];
-		material.block.SetProperty(data->name, data->block->ptr, data->block->length);
-	};
+	Expects(GetResourceType(mat) == ResourceType::MATERIAL);
+	auto block = gl::AllocAndCopy(value, size);
+	render_commands.Add([=]() {
+		auto& material = materials[mat];
+		material.block.SetProperty(name, block->ptr, block->length);
+	});
 }
 
-void DeleteMaterial(RenderResource material)
+void DeleteMaterial(RenderResource mat)
 {
-	Expects(GetResourceType(material) == ResourceType::MATERIAL);
+	Expects(GetResourceType(mat) == ResourceType::MATERIAL);
 
-	struct CmdType : Cmd
-	{
-		RenderResource mat;
-	};
-
-	auto cmd = postrender_commands.Add<CmdType>();
-	cmd->mat = material;
-	cmd->dispatch = [](Cmd* cmd) {
-		auto data = reinterpret_cast<CmdType*>(cmd);
-		gl::Destroy(materials[data->mat].program);
-		gl::Destroy(materials[data->mat].uniform_buffer);
-		materials.Remove(data->mat);
-	};
+	postrender_commands.Add([=]() {
+		gl::Destroy(materials[mat].program);
+		gl::Destroy(materials[mat].uniform_buffer);
+		materials.Remove(mat);
+	});
 }
 
 void SetViewTransform(const Mat4& matrix)
 {
-	struct CmdType : Cmd
-	{
-		Mat4 mat;
-	};
-	auto cmd = render_commands.Add<CmdType>();
-	cmd->mat = matrix;
-	cmd->dispatch = [](Cmd* cmd) {
-		auto data = reinterpret_cast<CmdType*>(cmd);
-		view_matrix = data->mat;
-	};
-
+	render_commands.Add([=]() {
+		view_matrix = matrix;
+	});
 }
 
 void SetProjectionTransform(const Mat4& matrix)
 {
-	struct CmdType : Cmd
-	{
-		Mat4 mat;
-	};
-	auto cmd = render_commands.Add<CmdType>();
-	cmd->mat = matrix;
-	cmd->dispatch = [](Cmd* cmd) {
-		auto data = reinterpret_cast<CmdType*>(cmd);
-		projection_matrix = data->mat;
-	};
+	render_commands.Add([=]() {
+		projection_matrix = matrix;
+	});
 }
 
 void EndFrame()
@@ -662,18 +514,7 @@ struct
 
 void InitImguiRendering(const MemoryBlock* font_data, int width, int height)
 {
-	struct CmdType :Cmd
-	{
-		const MemoryBlock* font_data;
-		int width, height;
-
-	};
-
-	auto cmd = render_commands.Add<CmdType>();
-	cmd->font_data = font_data;
-	cmd->width = width;
-	cmd->height = height;
-	cmd->dispatch = [](Cmd* cmd) {
+	render_commands.Add([=]() {
 		const char vertex_shader[] =
 			"#version 330\n"
 			"uniform mat4 ProjMtx;\n"
@@ -707,8 +548,7 @@ void InitImguiRendering(const MemoryBlock* font_data, int width, int height)
 		imgui.font_sampler = gl::CreateUniform("Texture", gl::UniformType::Sampler);
 		imgui.projection_matrix = gl::CreateUniform("ProjMtx", gl::UniformType::Mat4);
 
-		auto data = reinterpret_cast<CmdType*>(cmd);
-		imgui.texture = gl::CreateTexture2D(data->width, data->height, gl::TextureFormat::RGBA8, data->font_data);
+		imgui.texture = gl::CreateTexture2D(width, height, gl::TextureFormat::RGBA8, font_data);
 
 		render::VertexLayout vert_layout;
 		vert_layout
@@ -718,51 +558,23 @@ void InitImguiRendering(const MemoryBlock* font_data, int width, int height)
 		vert_layout.interleaved = true;
 		imgui.vertex_buffer = gl::CreateDynamicVertexBuffer(vert_layout);
 		imgui.index_buffer = gl::CreateDynamicIndexBuffer(IndexType::UShort);
-	};
+	});
 
 
 }
 
 void UpdateImguiData(const MemoryBlock* vertex_data, const MemoryBlock* index_data, const Vec2& size)
 {
-	struct CmdType : Cmd
-	{
-		const MemoryBlock* vert_data;
-		const MemoryBlock* index_data;
-		Vec2 display_size;
-	};
-	auto cmd = render_commands.Add<CmdType>();
-	cmd->vert_data = vertex_data;
-	cmd->index_data = index_data;
-	cmd->display_size = size;
-	cmd->dispatch = [](Cmd* cmd) {
-		auto data = reinterpret_cast<CmdType*>(cmd);
-		gl::UpdateDynamicVertexBuffer(imgui.vertex_buffer, data->vert_data);
-		gl::UpdateDynamicIndexBuffer(imgui.index_buffer, data->index_data);
-		imgui.display_size = data->display_size;
-	};
-
-
+	render_commands.Add([=]() {
+		gl::UpdateDynamicVertexBuffer(imgui.vertex_buffer, vertex_data);
+		gl::UpdateDynamicIndexBuffer(imgui.index_buffer, index_data);
+		imgui.display_size = size;
+	});
 }
 
 void DrawImguiCmd(uint32_t vertex_offset, uint32_t index_offset, uint32_t index_count, uint32_t scissor_x, uint32_t scissor_y, uint32_t scissor_w, uint32_t scissor_h)
 {
-	struct CmdType : Cmd
-	{
-		uint32_t vertex_offset, index_offset, index_count;
-		uint32_t x, y, w, h;
-	};
-	auto cmd = render_commands.Add<CmdType>();
-	cmd->vertex_offset = vertex_offset;
-	cmd->index_offset = index_offset;
-	cmd->index_count = index_count;
-	cmd->x = scissor_x;
-	cmd->y = scissor_y;
-	cmd->w = scissor_w;
-	cmd->h = scissor_h;
-
-	cmd->dispatch = [](Cmd* cmd) {
-		auto data = reinterpret_cast<CmdType*>(cmd);
+	render_commands.Add([=]() {
 		constexpr uint64_t raster_state = 0 |
 			gl::RenderState::BLEND_EQUATION_ADD |
 			gl::RenderState::BLEND_ONE_MINUS_SRC_ALPHA |
@@ -781,11 +593,11 @@ void DrawImguiCmd(uint32_t vertex_offset, uint32_t index_offset, uint32_t index_
 		gl::SetUniform(imgui.projection_matrix, ortho_projection);
 
 		gl::SetTexture(imgui.texture, imgui.font_sampler, 0);
-		gl::SetScissor(data->x, data->y, data->w, data->h);
-		gl::SetVertexBuffer(imgui.vertex_buffer, data->vertex_offset);
-		gl::SetIndexBuffer(imgui.index_buffer, data->index_offset, data->index_count);
+		gl::SetScissor(scissor_x, scissor_y, scissor_w, scissor_h);
+		gl::SetVertexBuffer(imgui.vertex_buffer, vertex_offset);
+		gl::SetIndexBuffer(imgui.index_buffer, index_offset, index_count);
 		gl::Submit(imgui.render_layer, imgui.program);
-	};
+	});
 }
 
 
