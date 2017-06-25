@@ -78,6 +78,21 @@ public:
 		return GetVec3Attribute(MeshAttributes::NORMAL);
 	}
 
+	inline bool HasColors() const 
+	{
+		return (active_attributes_ & MeshAttributes::COLOR0) != 0;
+	}
+
+	inline Vec4* Colors()
+	{
+		return GetVec4Attribute(MeshAttributes::COLOR0);
+	}
+
+	inline const Vec4* Colors() const
+	{
+		return GetVec4Attribute(MeshAttributes::COLOR0);
+	}
+
 	inline unsigned int* Indices()
 	{
 		return static_cast<unsigned int*>(index_block_.ptr);
@@ -215,4 +230,5 @@ std::unique_ptr<Mesh> LoadPLY(const char* filename);
 std::unique_ptr<Mesh> LoadOBJ(const char* filename);
 Mesh MakeSquare(int num_div_x, int num_div_y);
 Mesh MakeIcosphere(int num_divisions);
+Mesh AddPerVertexColor(const Mesh& mesh, const std::vector<Vec4>& colors);
 }
