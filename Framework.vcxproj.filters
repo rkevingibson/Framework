@@ -990,4 +990,8 @@
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
+  <ItemGroup>
+    <None Include="Shaders\vert_color.frag" />
+    <None Include="Shaders\vert_color.vert" />
+  </ItemGroup>
 </Project>

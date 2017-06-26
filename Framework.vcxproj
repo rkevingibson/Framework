@@ -443,6 +443,10 @@
     <ClInclude Include="utilities\RingBuffer.h" />
     <ClInclude Include="utilities\Utilities.h" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="Shaders\vert_color.frag" />
+    <None Include="Shaders\vert_color.vert" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
