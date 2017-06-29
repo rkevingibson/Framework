@@ -21,7 +21,7 @@ namespace {
 
 	static_assert(SIZE - CACHE_SIZE == 0, "Need to adjust padding of Job!");
 
-	static constexpr size_t MAX_NUM_JOBS = KILO(64);
+	static constexpr size_t MAX_NUM_JOBS = KILO(128);
 
 	class alignas(64) JobQueue
 	{
