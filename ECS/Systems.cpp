@@ -97,8 +97,11 @@ namespace ecs {
 			glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 			glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
 			glfwWindowHint(GLFW_SAMPLES, 2);
+			auto monitor = glfwGetPrimaryMonitor();
+			auto video_mode = glfwGetVideoMode(monitor);
+			
 
-			Input::ScreenSize = Vec2(1920, 1080);
+			Input::ScreenSize = Vec2(video_mode->width*0.8, video_mode->height*0.8);
 			GLFWwindow* window = glfwCreateWindow(Input::ScreenSize.x, Input::ScreenSize.y, "Material Editor", nullptr, nullptr);
 			
 			if (!window)

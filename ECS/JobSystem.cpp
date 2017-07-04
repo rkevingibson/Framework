@@ -117,7 +117,7 @@ namespace {
 	std::unique_ptr<JobAllocator[]> job_allocators;
 	int num_job_queues;
 	thread_local int thread_index{ 0 };
-	std::atomic_bool workers_running;
+	std::atomic_bool workers_running{ false };
 	std::atomic_int clear_workers{ 0 };
 
 	unsigned int GetRandomThreadIndex(const int num_threads)
@@ -207,13 +207,10 @@ void InitializeWorkerThreads(int num_workers)
 					Execute(job);
 				}
 				else {
-					if (clear_workers != 0) {
+					if (clear_workers == GetThreadIndex()) {
 						job_queues[GetThreadIndex()].Clear();
 						job_allocators[GetThreadIndex()].DeallocateAll();
-						--clear_workers;
-						while (clear_workers != 0) {
-							std::this_thread::yield();
-						}
+						clear_workers.fetch_sub(1);
 					}
 
 					std::this_thread::yield();
@@ -268,8 +265,8 @@ void ClearJobs()
 	clear_workers.store(num_job_queues - 1);
 	job_queues[GetThreadIndex()].Clear();
 	job_allocators[GetThreadIndex()].DeallocateAll();
-	
-	while (clear_workers != 0) {
+	//printf("Clear_workers:%d", clear_workers.load());
+	while (clear_workers.load() != 0) {
 		std::this_thread::yield();
 	}
 

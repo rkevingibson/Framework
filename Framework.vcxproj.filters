@@ -994,4 +994,7 @@
     <None Include="Shaders\vert_color.frag" />
     <None Include="Shaders\vert_color.vert" />
   </ItemGroup>
+  <ItemGroup>
+    <Natvis Include="External\Eigen\eigen.natvis" />
+  </ItemGroup>
 </Project>
