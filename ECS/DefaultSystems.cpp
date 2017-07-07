@@ -103,6 +103,20 @@ void ArcballSystem::Update(double delta_time)
 		arcball->EndArcball();
 	}
 
+	static Vec2 zoom_mouse_pos = Input::MousePosition;
+	if (Input::MouseButtonPressed[1]) {
+		//Start a smooth zoom in.
+		zoom_mouse_pos = Input::MousePosition;
+	}
+
+	if (Input::MouseButton[1]) {
+		Vec2 delta = Input::MousePosition - zoom_mouse_pos;
+		arcball->distance -= zoom_speed*delta.y/Input::ScreenSize.y;
+
+		zoom_mouse_pos = Input::MousePosition;
+	}
+
+
 	arcball->UpdateArcball(Input::MousePosition);
 	arcball->distance -= zoom_speed*Input::MouseWheelDelta.y;
 	render::SetViewTransform(arcball->GetViewMatrix());

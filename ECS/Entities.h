@@ -31,7 +31,7 @@ class Scene
 private:
 	HashIndex hash_index_;
 	std::vector<Entity> entities_;
-	uint64_t next_id_;
+	EntityID next_id_;
 public:
 	inline Entity* CreateEntity()
 	{
