@@ -6,6 +6,11 @@ namespace ecs
 class System
 {
 public:
+	System() = default;
+	virtual ~System() = default;
+	
+
+
 	virtual void Initialize() {};
 	virtual void FixedUpdate() {};
 	virtual void Update(double delta_time) {};
