@@ -38,7 +38,7 @@ class ArcballSystem : public ecs::System
 {
 public:
 	ArcballSystem();
-	~ArcballSystem();
+	virtual ~ArcballSystem();
 	ArcballSystem(const ArcballSystem&) = delete;
 	ArcballSystem(ArcballSystem&&) = default;
 	ArcballSystem& operator=(const ArcballSystem&) = default;
