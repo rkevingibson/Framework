@@ -137,6 +137,7 @@
     <ClCompile Include="utilities\GuiBasics.cpp" />
     <ClCompile Include="utilities\HashIndex.cpp" />
     <ClCompile Include="utilities\Input.cpp" />
+    <ClCompile Include="Utilities\Profiler.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ecs\DefaultSystems.h" />
@@ -440,6 +441,7 @@
     <ClInclude Include="utilities\HashIndex.h" />
     <ClInclude Include="utilities\Input.h" />
     <ClInclude Include="utilities\MurmurHash.h" />
+    <ClInclude Include="Utilities\Profiler.h" />
     <ClInclude Include="utilities\RingBuffer.h" />
     <ClInclude Include="utilities\Utilities.h" />
   </ItemGroup>

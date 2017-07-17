@@ -78,6 +78,9 @@
     <ClCompile Include="ECS\JobSystem.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Utilities\Profiler.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ecs\DefaultSystems.h">
@@ -987,6 +990,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="ECS\JobSystem.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Utilities\Profiler.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
