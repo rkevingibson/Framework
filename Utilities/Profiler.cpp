@@ -120,6 +120,7 @@ namespace profiler {
 		struct BlockUIData{
 			unsigned int id;
 			uint64_t start_time;
+			uint64_t end_time;
 			uint64_t duration;
 			float display_length;
 			bool is_root{ false };
@@ -135,6 +136,7 @@ namespace profiler {
 			for (const auto& b : block_list) {
 				if (b.block_end) {
 					//Pop off our working stack.
+					working_stack.back().end_time = b.timestamp;
 					working_stack.back().duration = b.timestamp - working_stack.back().start_time;
 					working_stack.back().display_length = TimestampToMilliseconds(working_stack.back().duration);
 					ui_data.emplace_back(working_stack.back());
@@ -151,7 +153,7 @@ namespace profiler {
 				}
 			}
 
-			std::sort(ui_data.begin(), ui_data.end(), 
+			std::stable_sort(ui_data.begin(), ui_data.end(), 
 				[](const BlockUIData& a, const BlockUIData& b) {
 				return a.start_time < b.start_time;
 			});
@@ -167,16 +169,16 @@ namespace profiler {
 		static int(*add_children)(const std::vector<BlockUIData>&, int, uint64_t)
 			= [](const std::vector<BlockUIData>& ui, int index, uint64_t end_time) -> int {
 			auto blocks = reinterpret_cast<BlockDescriptor*>(descriptor_allocator.Begin());
-			while(index < ui.size() && ui[index].start_time <= end_time) {
+			while(index < ui.size() && ui[index].start_time < end_time) {
 				ImGui::PushID(index);
 				if (ImGui::TreeNode("profiler_node", "%s : %f ms", blocks[ui[index].id].name, ui[index].display_length)) {
-					index = add_children(ui, index + 1, ui[index].start_time + ui[index].duration);
+					index = add_children(ui, index + 1, ui[index].end_time);
 					ImGui::TreePop();
 				}
 				else {
 					//If the tree is not open, need to find the next node at this level.
 					int next_index = index + 1;
-					while (next_index < ui.size() && ui[next_index].start_time <= ui[index].start_time + ui[index].duration) {
+					while (next_index < ui.size() && ui[next_index].start_time < ui[index].end_time) {
 						next_index++;
 					}
 					index = next_index;
