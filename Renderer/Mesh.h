@@ -230,5 +230,6 @@ std::unique_ptr<Mesh> LoadPLY(const char* filename);
 std::unique_ptr<Mesh> LoadOBJ(const char* filename);
 Mesh MakeSquare(int num_div_x, int num_div_y);
 Mesh MakeIcosphere(int num_divisions);
+Mesh ApplyPerFaceColor(const Mesh& mesh, const std::vector<Vec4>& colors);
 Mesh AddPerVertexColor(const Mesh& mesh, const std::vector<Vec4>& colors);
 }

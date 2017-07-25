@@ -4,6 +4,7 @@
 #include <Renderer/ArcballCamera.h>
 #include <Renderer/RenderInterface.h>
 
+#include <algorithm>
 
 using namespace rkg;
 
@@ -111,7 +112,7 @@ void ArcballSystem::Update(double delta_time)
 
 	if (Input::MouseButton[1]) {
 		Vec2 delta = Input::MousePosition - zoom_mouse_pos;
-		arcball->distance -= zoom_speed*delta.y/Input::ScreenSize.y;
+		arcball->distance = arcball->distance - zoom_speed*delta.y/Input::ScreenSize.y;
 
 		zoom_mouse_pos = Input::MousePosition;
 	}
@@ -119,6 +120,7 @@ void ArcballSystem::Update(double delta_time)
 
 	arcball->UpdateArcball(Input::MousePosition);
 	arcball->distance -= zoom_speed*Input::MouseWheelDelta.y;
+	arcball->distance = std::max(arcball->distance, 0.f);
 	render::SetViewTransform(arcball->GetViewMatrix());
 }
 
