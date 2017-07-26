@@ -1,6 +1,7 @@
 #pragma once
 #include <algorithm>
 
+#include "Utilities.h"
 
 namespace rkg {
 	//Includes some basic geometric primitives - vectors, matrices. All fixed size here.
@@ -185,6 +186,24 @@ namespace rkg {
 	
 		inline friend Vec3 Max(const Vec3& a, const Vec3& b) {
 			return Vec3(std::max(a.x, b.x), std::max(a.y, b.y), std::max(a.z, b.z));
+		}
+
+		/*GLSL Equivalents*/
+
+		inline friend Vec3 Lerp(const Vec3& a, const Vec3& b, float t) {
+			return a + t*(b - a);
+		}
+
+		inline friend Vec3 Clamp(const Vec3& x, float a, float b) {
+			return Vec3(Clamp(x.x, a, b), 
+						Clamp(x.y, a, b), 
+						Clamp(x.z, a, b));
+		}
+
+		inline friend Vec3 Clamp(const Vec3& x, const Vec3& a, const Vec3& b) {
+			return Vec3(Clamp(x.x, a.x, b.x), 
+						Clamp(x.y, a.y, b.y), 
+						Clamp(x.z, a.z, b.z));
 		}
 	};
 

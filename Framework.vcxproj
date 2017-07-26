@@ -434,6 +434,7 @@
     <ClInclude Include="renderer\Renderer.h" />
     <ClInclude Include="renderer\RenderInterface.h" />
     <ClInclude Include="utilities\Allocators.h" />
+    <ClInclude Include="Utilities\ColorUtils.h" />
     <ClInclude Include="utilities\CommandStream.h" />
     <ClInclude Include="utilities\Filesystem.h" />
     <ClInclude Include="utilities\Geometry.h" />
