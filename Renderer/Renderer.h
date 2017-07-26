@@ -206,7 +206,7 @@ void GetUniformBlockInfo(ProgramHandle h, const char* block_name, render::Proper
 VertexBufferHandle	CreateVertexBuffer(const MemoryBlock* data, const render::VertexLayout& layout);
 VertexBufferHandle	CreateDynamicVertexBuffer(const MemoryBlock* data, const render::VertexLayout& layout);
 VertexBufferHandle	CreateDynamicVertexBuffer(const render::VertexLayout& layout);
-void	UpdateDynamicVertexBuffer(VertexBufferHandle handle, const MemoryBlock* data, const ptrdiff_t offset = 0);
+void	UpdateDynamicVertexBuffer(VertexBufferHandle handle, const MemoryBlock* data, const render::VertexLayout& layout, const ptrdiff_t offset = 0);
 
 #pragma endregion
 

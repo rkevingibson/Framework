@@ -192,7 +192,7 @@ void ResizeWindow(int w, int h);
 //void UpdateMeshData(RenderHandle mesh, const MemoryBlock* vertex_data, const MemoryBlock* index_data);
 
 RenderResource CreateGeometry(const MemoryBlock* vertex_data, const VertexLayout& layout, const MemoryBlock* index_data, IndexType type);
-void UpdateGeometry(const RenderResource geometry, const MemoryBlock* vertex_data, const MemoryBlock* index_data = nullptr);
+void UpdateGeometry(const RenderResource geometry, const MemoryBlock* vertex_data, const VertexLayout& layout, const MemoryBlock* index_data = nullptr);
 void DeleteGeometry(RenderResource geometry);
 
 RenderResource CreateMaterial(const MemoryBlock* vertex_shader, const MemoryBlock* frag_shader);

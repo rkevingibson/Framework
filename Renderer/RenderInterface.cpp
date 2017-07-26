@@ -354,13 +354,15 @@ RenderResource CreateGeometry(const MemoryBlock * vertex_data, const VertexLayou
 	return geom;
 }
 
-void UpdateGeometry(const RenderResource geometry_handle, const MemoryBlock * vertex_data, const MemoryBlock * index_data)
+void UpdateGeometry(const RenderResource geometry_handle, const MemoryBlock * vertex_data, const VertexLayout& layout, const MemoryBlock * index_data)
 {
 	Expects(GetResourceType(geometry_handle) == ResourceType::GEOMETRY);
 
+
 	auto cmd = render_commands.Add([=]() {
 		auto& geom = geometries[geometry_handle];
-		gl::UpdateDynamicVertexBuffer(geom.vertex_buffer, vertex_data);
+		gl::UpdateDynamicVertexBuffer(geom.vertex_buffer, vertex_data, layout);
+
 		if (index_data) {
 			gl::UpdateDynamicIndexBuffer(geom.index_buffer, index_data);
 		}
@@ -565,8 +567,15 @@ void InitImguiRendering(const MemoryBlock* font_data, int width, int height)
 
 void UpdateImguiData(const MemoryBlock* vertex_data, const MemoryBlock* index_data, const Vec2& size)
 {
+	
 	render_commands.Add([=]() {
-		gl::UpdateDynamicVertexBuffer(imgui.vertex_buffer, vertex_data);
+		render::VertexLayout vert_layout;
+		vert_layout
+			.Add(VertexLayout::AttributeBinding::POSITION, 2, VertexLayout::AttributeType::FLOAT32)
+			.Add(VertexLayout::AttributeBinding::TEXCOORD0, 2, VertexLayout::AttributeType::FLOAT32)
+			.Add(VertexLayout::AttributeBinding::COLOR0, 4, VertexLayout::AttributeType::UINT8, true);
+		vert_layout.interleaved = true;
+		gl::UpdateDynamicVertexBuffer(imgui.vertex_buffer, vertex_data, vert_layout);
 		gl::UpdateDynamicIndexBuffer(imgui.index_buffer, index_data);
 		imgui.display_size = size;
 	});

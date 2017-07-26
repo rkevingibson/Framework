@@ -1168,9 +1168,10 @@ void UpdateDynamicBuffer(GLenum target, GLuint buffer, const MemoryBlock* block,
 }
 }
 
-void gl::UpdateDynamicVertexBuffer(VertexBufferHandle handle, const MemoryBlock* data, const ptrdiff_t offset)
+void gl::UpdateDynamicVertexBuffer(VertexBufferHandle handle, const MemoryBlock* data, const render::VertexLayout& layout, const ptrdiff_t offset)
 {
 	auto& vb = vertex_buffers[handle.index];
+	vb.layout = layout;
 	UpdateDynamicBuffer(GL_ARRAY_BUFFER, vb.buffer, data, &vb.size);
 }
 
@@ -1788,10 +1789,19 @@ void gl::Render()
 				vertex_buffer_handle.index != draw_cmd->vertex_buffer) {
 				vertex_buffer_handle = VertexBufferHandle{ draw_cmd->vertex_buffer };
 				index_buffer_handle = IndexBufferHandle{ draw_cmd->index_buffer };
+
+				auto& vertex_buffer = vertex_buffers[draw_cmd->vertex_buffer];
+
 				//Compute hash
 				rkg::MurmurHash hash;
 				hash.Add(draw_cmd->vertex_buffer);
+				if (!vertex_buffer.layout.interleaved) {
+					hash.Add(vertex_buffer.size);
+				}
 				hash.Add(draw_cmd->index_buffer);
+				hash.Add((char*)vertex_buffer.layout.types, vertex_buffer.layout.num_attributes * sizeof(vertex_buffer.layout.types[0]));
+				hash.Add((char*)vertex_buffer.layout.counts, vertex_buffer.layout.num_attributes * sizeof(vertex_buffer.layout.counts[0]));
+				hash.Add((uint32_t)vertex_buffer.layout.interleaved);
 				auto vao_hash = hash.Finish();
 
 				//Attempt to lookup vao.
@@ -1805,7 +1815,7 @@ void gl::Render()
 
 					vao_cache.Add(vao_hash, vao);
 					glBindVertexArray(vao);
-					auto& vertex_buffer = vertex_buffers[draw_cmd->vertex_buffer];
+					
 
 
 					auto& vertex_layout = vertex_buffer.layout;
