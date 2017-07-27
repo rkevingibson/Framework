@@ -25,7 +25,7 @@ private:
 	allocator_type allocator_{};
 
 public:
-	RingBuffer(size_t capacity)
+	RingBuffer(size_t capacity = 0)
 	{
 		block_ = allocator_.Allocate(rkg::RoundToPow2(capacity * sizeof(element_type)));
 		capacity_ = block_.length / sizeof(element_type);
@@ -35,8 +35,12 @@ public:
 		for (int i = 0; i < capacity_; i++) {
 			new(&buffer_[i]) element_type;
 		}
-
 	}
+
+	RingBuffer(const RingBuffer&) = delete;
+	RingBuffer(RingBuffer&&) = default;
+	RingBuffer& operator=(const RingBuffer&) = delete;
+	RingBuffer& operator=(RingBuffer&&) = default;
 
 	bool Push(const element_type& val)
 	{
@@ -92,8 +96,8 @@ public:
 
 	void Clear()
 	{
-		read_ =  0 ;
-		write_ = 0 ;
+		read_ = 0;
+		write_ = 0;
 	}
 
 	void Resize(size_t new_capacity)
@@ -101,6 +105,11 @@ public:
 		allocator_.Reallocate(block_, RoundToPow2(new_capacity));
 		capacity_ = block_.length / sizeof(element_type);
 		mask_ = capacity_ - 1;
+
+
+		for (int i = 0; i < capacity_; i++) {
+			new(&buffer_[i]) element_type;
+		}
 	}
 };
 
