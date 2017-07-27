@@ -95,7 +95,7 @@ inline size_t log2(size_t v)
 
 }
 
-inline size_t RoundToAligned(size_t n, size_t alignment)
+inline constexpr size_t RoundToAligned(size_t n, size_t alignment)
 {
 	return (n + alignment - 1) & ~(alignment - 1);
 }
