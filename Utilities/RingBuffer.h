@@ -47,7 +47,7 @@ public:
 		if (write_ == read_ + capacity_) {
 			return false;
 		}
-		buffer[write & mask_] = val;
+		buffer_[write_ & mask_] = val;
 		write_++;
 		return true;
 	}
@@ -85,7 +85,7 @@ public:
 	const element_type& operator[](size_t i) const
 	{
 		Expects(i < capacity_);
-		return buffer[(write - i - 1) & mask_];
+		return buffer_[(write_ - i - 1) & mask_];
 	}
 
 	//How many elements are currently in the buffer
