@@ -21,6 +21,7 @@ private:
 	MemoryBlock block_;
 	element_type* buffer_;
 	size_t capacity_;
+	size_t reserved_capacity_;
 	size_t mask_;
 	allocator_type allocator_{};
 
@@ -28,11 +29,12 @@ public:
 	RingBuffer(size_t capacity = 0)
 	{
 		block_ = allocator_.Allocate(rkg::RoundToPow2(capacity * sizeof(element_type)));
-		capacity_ = block_.length / sizeof(element_type);
-		mask_ = capacity_ - 1;
+		reserved_capacity_ = block_.length / sizeof(element_type);
+		capacity_ = Min(reserved_capacity_, capacity);
+		mask_ = reserved_capacity_ - 1;
 		buffer_ = static_cast<element_type*>(block_.ptr);
 		//Need to initialize buffer_ objects to a valid state.
-		for (int i = 0; i < capacity_; i++) {
+		for (int i = 0; i < reserved_capacity_; i++) {
 			new(&buffer_[i]) element_type;
 		}
 	}
@@ -102,12 +104,15 @@ public:
 
 	void Resize(size_t new_capacity)
 	{
-		allocator_.Reallocate(block_, RoundToPow2(new_capacity));
-		capacity_ = block_.length / sizeof(element_type);
-		mask_ = capacity_ - 1;
+		if (new_capacity > reserved_capacity_) {
+			allocator_.Reallocate(block_, RoundToPow2(new_capacity));
+		}
+		reserved_capacity_ = block_.length / sizeof(element_type);
+		capacity_ = Min(capacity_, reserved_capacity_);
+		mask_ = reserved_capacity_ - 1;
 
 
-		for (int i = 0; i < capacity_; i++) {
+		for (int i = 0; i < reserved_capacity_; i++) {
 			new(&buffer_[i]) element_type;
 		}
 	}

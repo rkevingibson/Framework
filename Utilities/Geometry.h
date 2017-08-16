@@ -119,6 +119,12 @@ namespace rkg {
 			x -= rhs.x; y -= rhs.y; z -= rhs.z;
 			return *this;
 		}
+		//Scalar addition
+		inline Vec3& operator+=(float rhs) noexcept {
+			x += rhs; y += rhs; z += rhs;
+			return *this;
+		}
+
 		//Scalar multiplication
 		inline Vec3& operator*=(float rhs) noexcept{
 			x *= rhs; y *= rhs; z *= rhs;
@@ -147,6 +153,17 @@ namespace rkg {
 		inline friend Vec3 operator-(const Vec3& rhs) noexcept {
 			return Vec3(-rhs.x, -rhs.y, -rhs.z);
 		}
+
+		//Scalar addition
+		inline friend Vec3 operator+(Vec3 lhs, float rhs) noexcept {
+			lhs += rhs;
+			return lhs;
+		}
+		inline friend Vec3 operator+(float lhs, Vec3 rhs) noexcept {
+			rhs += lhs;
+			return rhs;
+		}
+
 		//Scalar multiplication
 		inline friend Vec3 operator*(Vec3 lhs, float rhs) noexcept {
 			lhs *= rhs;

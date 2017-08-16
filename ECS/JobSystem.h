@@ -35,6 +35,8 @@ Job* CreateJob(T&& fn)
 	int extra_space = std::max<int>(sizeof(T) - Job::PADDING_SIZE, 0);
 	Job* job = AllocateJob(extra_space);
 
+	ASSERT(job != nullptr && "Job failed to allocate!!");
+
 	new(job->padding) T(std::forward<T>(fn));
 	job->function = [](void* address, Job* j) {
 		auto f = reinterpret_cast<T*>(address);
