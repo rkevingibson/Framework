@@ -193,6 +193,17 @@ ResourceContainer<RenderGeometry> geometries;
 ResourceContainer<RenderMesh> meshes;
 ResourceContainer<RenderMaterial> materials;
 
+//
+//Debug Draw resources
+//
+std::vector<uint32_t> debug_index_buffers[2];
+std::vector<Vec4> debug_data_buffers[2];
+
+std::vector<uint32_t>* debug_front_index_buffer = &debug_index_buffers[0];
+std::vector<Vec4>* debug_front_data_buffer = &debug_data_buffers[0]; 
+std::vector<uint32_t>* debug_back_index_buffer = &debug_index_buffers[1];
+std::vector<Vec4>* debug_back_data_buffer = &debug_data_buffers[1];
+
 void AddForwardPass(FrameGraph& graph)
 {
 	//Simple example which just draws meshes to the 
@@ -289,6 +300,9 @@ void RenderLoop(GLFWwindow* window)
 		} //Spin while this flag hasn't been set by the other thread.
 		render_commands.SwapBuffers(); //Need to signal to the other threads that they can now make render calls.
 		postrender_commands.SwapBuffers();
+		//Swap debug draw data.
+		std::swap(debug_front_index_buffer, debug_back_index_buffer);
+		std::swap(debug_front_data_buffer,  debug_back_data_buffer);
 		game_fence.clear();
 
 		//Update our state by pumping the command list. This syncs state between the game + render threads.
@@ -305,9 +319,12 @@ void RenderLoop(GLFWwindow* window)
 		}
 
 		//Draw all the meshes.
-		//TODO: Culling.
+		//TODO: Culling, other optimizations.
 
 		frame_graph.Execute();
+
+		//TODO:Make this less hacky
+		//Draw debug stuff.
 
 
 		gl::Render();
@@ -608,6 +625,134 @@ void DrawImguiCmd(uint32_t vertex_offset, uint32_t index_offset, uint32_t index_
 		gl::Submit(imgui.render_layer, imgui.program);
 	});
 }
+
+
+namespace
+{
+	enum DebugPrimitive_
+	{
+		DebugPrimitive_Sphere = 0,
+		DebugPrimitive_Disc,
+		DebugPrimitive_Cylinder,
+		DebugPrimitive_Cone,
+	};
+}
+
+
+void DebugDrawSphere(const Vec3 & position, float radius, const Vec4 & color)
+{
+	struct Sphere
+	{
+		Vec4 pos;
+		Vec4 color;
+	} sphere;
+
+	sphere.pos = Vec4(position.x, position.y, position.z, radius);
+	sphere.color = color;
+	
+	//How many verts does a sphere need? 
+	uint32_t primitive_offset = debug_back_data_buffer->size();
+	debug_back_data_buffer->push_back(sphere.pos);
+	debug_back_data_buffer->push_back(sphere.color);
+	
+	constexpr int NUM_SPHERE_VERTS = 32;
+	for (int i = 0; i < NUM_SPHERE_VERTS; i++) {
+		uint32_t index = primitive_offset 
+			| (i << 20)
+			| (DebugPrimitive_Sphere << 29);
+		debug_back_index_buffer->push_back(index);
+	}
+}
+
+void DebugDrawDisc(const Vec3 & center, const Vec3 & normal, float radius, const Vec4 & color)
+{
+	struct Disc
+	{
+		Vec4 center;
+		Vec4 normal;
+		Vec4 color;
+	} disc;
+
+	disc.center = Vec4(center.x, center.y, center.z, radius);
+	disc.normal = Vec4(normal);
+	disc.color = color;
+
+	uint32_t primitive_offset = debug_back_data_buffer->size();
+	debug_back_data_buffer->push_back(disc.center);
+	debug_back_data_buffer->push_back(disc.normal);
+	debug_back_data_buffer->push_back(disc.color);
+
+	constexpr int NUM_CYLINDER_VERTS = 16;
+	for (int i = 0; i < NUM_CYLINDER_VERTS; i++) {
+		uint32_t index = primitive_offset
+			| (i << 20)
+			| (DebugPrimitive_Cylinder << 29);
+		debug_back_index_buffer->push_back(index);
+	}
+}
+
+void DebugDrawCylinder(const Vec3 & start, const Vec3 & end, float radius, const Vec4 & color)
+{
+	struct Cylinder
+	{
+		Vec4 bottom;
+		Vec4 top;
+		Vec4 color;
+	} cylinder;
+	cylinder.bottom = Vec4(start.x, start.y, start.z, radius);
+	cylinder.top = Vec4(end.x, end.y, end.z, radius);
+	cylinder.color = color;
+
+	uint32_t primitive_offset = debug_back_data_buffer->size();
+	debug_back_data_buffer->push_back(cylinder.bottom);
+	debug_back_data_buffer->push_back(cylinder.top);
+	debug_back_data_buffer->push_back(cylinder.color);
+
+	constexpr int NUM_CYLINDER_VERTS = 32;
+	for (int i = 0; i < NUM_CYLINDER_VERTS; i++) {
+		uint32_t index = primitive_offset
+			| (i<<20)
+			| (DebugPrimitive_Cylinder << 29);
+		debug_back_index_buffer->push_back(index);
+	}
+}
+
+void DebugDrawCone(const Vec3 & bottom, const Vec3 & top, float radius, const Vec4 & color)
+{
+	struct Cone
+	{
+		Vec4 bottom;
+		Vec4 top;
+		Vec4 color;
+	} cone;
+
+	cone.bottom = bottom;
+	cone.bottom.w = radius;
+	cone.top = top;
+	cone.color = color;
+
+	uint32_t primitive_offset = debug_back_data_buffer->size();
+	debug_back_data_buffer->push_back(cone.bottom);
+	debug_back_data_buffer->push_back(cone.top);
+	debug_back_data_buffer->push_back(cone.color);
+
+	constexpr int NUM_CONE_VERTS = 32;
+	for (int i = 0; i < NUM_CONE_VERTS; i++) {
+		uint32_t index = primitive_offset
+			| (i << 20)
+			| (DebugPrimitive_Cone << 29);
+		debug_back_index_buffer->push_back(index);
+	}
+}
+
+void DebugDrawArrow(const Vec3 & tail, const Vec3 & tip, float tail_radius, float head_radius, float head_length, const Vec4 & color)
+{
+	//So simple!!
+	Vec3 tail_end = tail + head_length*(tip-tail);
+	DebugDrawCylinder(tail, tail_end, tail_radius, color);
+	DebugDrawCone(tail_end, tip, head_radius, color);
+}
+
 
 
 

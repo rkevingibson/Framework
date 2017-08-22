@@ -1784,7 +1784,7 @@ void gl::Render()
 		}
 
 		//VAOs - lookup the appropriate one, create it if necessary.
-		{
+		if(draw_cmd->vertex_buffer != INVALID_HANDLE) {
 			if (index_buffer_handle.index != draw_cmd->index_buffer ||
 				vertex_buffer_handle.index != draw_cmd->vertex_buffer) {
 				vertex_buffer_handle = VertexBufferHandle{ draw_cmd->vertex_buffer };
@@ -1859,6 +1859,16 @@ void gl::Render()
 					}
 				}
 			}
+			
+		}
+		else { //Vertex buffer isn't bound - just doing indexed drawing. 
+			glBindVertexArray(0); //Bind the default VAO.
+			if (draw_cmd->index_buffer != INVALID_HANDLE) {
+				auto& index_buffer = index_buffers[draw_cmd->index_buffer];
+				glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, index_buffer.buffer);
+			}
+			vertex_buffer_handle = VertexBufferHandle{ draw_cmd->vertex_buffer };
+			index_buffer_handle = IndexBufferHandle{ draw_cmd->index_buffer };
 		}
 
 		//Draw.

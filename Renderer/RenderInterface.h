@@ -219,6 +219,16 @@ void InitImguiRendering(const MemoryBlock* font_data, int width, int height);
 void UpdateImguiData(const MemoryBlock* vertex_data, const MemoryBlock* index_data, const Vec2& display_size);
 void DrawImguiCmd(uint32_t vertex_offset, uint32_t index_offset, uint32_t index_count, uint32_t scissor_x, uint32_t scissor_y, uint32_t scissor_w, uint32_t scissor_h);
 
+//
+//Immediate mode Debug Draw Functions!
+//
+
+void DebugDrawSphere(const Vec3& position, float radius, const Vec4& color);
+void DebugDrawDisc(const Vec3& center, const Vec3& normal, float radius, const Vec4& color);
+void DebugDrawCylinder(const Vec3& start, const Vec3& end, float radius, const Vec4& color);
+void DebugDrawCappedCylinder(const Vec3& start, const Vec3& end, float radius, const Vec4& color);
+void DebugDrawCone(const Vec3& bottom, const Vec3& top, float radius, const Vec4& color);
+void DebugDrawArrow(const Vec3& tail, const Vec3& tip, float tail_radius, float head_radius, float head_length /*Between 0-1*/, const Vec4& color);
 
 
 }
