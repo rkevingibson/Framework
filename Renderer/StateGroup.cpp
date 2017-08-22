@@ -48,7 +48,7 @@ namespace gl
 
 		uint8_t scissor_state : 2; //0 = not set, 1 = disabled, 2 = enabled.
 		//TODO: How to store scissor box? How often is it used?
-		//int scissor_box[4];
+		int scissor_box[4];
 	};
 
 	struct DepthState
@@ -132,7 +132,6 @@ namespace gl
 	struct TextureBinding
 	{
 		TextureHandle texture;
-		uint8_t texture_unit;
 		uint32_t sampler_id;
 	};
 
@@ -165,29 +164,71 @@ namespace gl
 		//Shader program.
 		ProgramHandle program{ 0 };
 
-
 		//TODO: Framebuffers. 
 		//FramebufferHandle framebuffer;
 		//Blend state is per-framebuffer output. So 
 
-
 		//Textures & Buffers
-		uint16_t texture_offset; //Can find a TextureBinding* at ((char*)&this) + texture_offset.
-		uint16_t buffer_offset; // Same as above.
-		uint8_t num_textures;
-		uint8_t num_buffers;
+		static constexpr size_t MAX_TEXTURES = 16;
+		static constexpr size_t MAX_BUFFERS = 16;
+		
+		//NOTE: We don't allow for partial overwriting of texture or buffer state - whole buffer bindings must be overwritten. 
+		TextureBinding textures[MAX_TEXTURES];
+		BufferBinding buffers[MAX_BUFFERS];
 
 		RasterizerState rasterizer_state{ 0 };
 		DepthState depth_state{ 0 };
-
-		
-
 	};
 	static constexpr size_t DRAW_CALL_SIZE = sizeof(DrawCall);
+
+	inline DrawCall* AllocateDrawCall()
+	{
+		//TODO: Arena allocator or something here.
+		return (DrawCall*) malloc(sizeof(DrawCall));
+	}
 
 	inline DrawCall* Compile(DrawCall** calls, int num_calls)
 	{
 		//Resolve overwrites in order and create a final draw call.
+
+		DrawCall* result = AllocateDrawCall();
+		*result = *(calls[0]);
+		RasterizerState* raster_state = &result->rasterizer_state;
+		DepthState* depth_state = &result->depth_state;
+
+		for (int i = 1; i < num_calls; i++) {
+			result->vertex_buffer = (result->vertex_buffer.index == 0) ? calls[i]->vertex_buffer : result->vertex_buffer;
+			result->index_buffer  = (result->index_buffer.index == 0)  ? calls[i]->index_buffer  : result->index_buffer;
+			result->program = (result->program.index == 0) ? calls[i]->program : result->program;
+			
+			for (int j = 0; j < DrawCall::MAX_TEXTURES; j++) {
+				if (result->textures[j].texture.index == 0) {
+					result->textures[j] = calls[i]->textures[j];
+				}
+			}
+
+			for (int j = 0; j < DrawCall::MAX_BUFFERS; j++) {
+				if (result->buffers[j].buffer.index == 0) {
+					result->buffers[j] = calls[i]->buffers[j];
+				}
+			}
+
+			raster_state->polygon_mode = (raster_state->polygon_mode == 0) ? calls[i]->rasterizer_state.polygon_mode : 0;
+			raster_state->cull_direction = (raster_state->cull_direction == 0) ? calls[i]->rasterizer_state.cull_direction : 0;
+			raster_state->cull_mode = (raster_state->cull_direction == 0) ? calls[i]->rasterizer_state.cull_direction : 0;
+			
+			raster_state->scissor_box[0] = (raster_state->scissor_state == 0) ? calls[i]->rasterizer_state.scissor_box[0] : 0;
+			raster_state->scissor_box[1] = (raster_state->scissor_state == 0) ? calls[i]->rasterizer_state.scissor_box[1] : 0;
+			raster_state->scissor_box[2] = (raster_state->scissor_state == 0) ? calls[i]->rasterizer_state.scissor_box[2] : 0;
+			raster_state->scissor_box[3] = (raster_state->scissor_state == 0) ? calls[i]->rasterizer_state.scissor_box[3] : 0;
+			raster_state->scissor_state = (raster_state->scissor_state == 0) ? calls[i]->rasterizer_state.scissor_state : 0;
+
+			depth_state->depth_func = (depth_state->depth_func == 0) ? calls[i]->depth_state.depth_func : 0;
+			depth_state->depth_test = (depth_state->depth_test == 0) ? calls[i]->depth_state.depth_test : 0;
+			depth_state->depth_write = (depth_state->depth_write == 0) ? calls[i]->depth_state.depth_write : 0;
+		}
+
+		return result;
 	}
 
 	inline void RenderDrawCall(DrawCall* draw)
