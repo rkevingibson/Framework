@@ -300,6 +300,20 @@ namespace rkg {
 	{
 		float data[9]{};
 
+		static const Mat3 Identity;
+		Mat3() = default;
+		inline Mat3(const Vec3 col0, const Vec3& col1, const Vec3& col2)
+		{
+			data[0] = col0.x; data[1] = col0.y; data[2] = col0.z;
+			data[3] = col1.x; data[4] = col1.y; data[5] = col1.z;
+			data[6] = col2.x; data[7] = col2.y; data[8] = col2.z;
+		}
+
+		inline void SetZero()
+		{
+			memset(data, 0, sizeof(data));
+		}
+
 		//=====================Access operators=====================
 		inline float& operator()(unsigned int row, unsigned int col)
 		{
@@ -311,7 +325,7 @@ namespace rkg {
 			return data[3 * col + row];
 		}
 
-		inline float& operator[](unsigned int idx) 
+		inline float& operator[](unsigned int idx)
 		{
 			return data[idx];
 		}
@@ -321,12 +335,48 @@ namespace rkg {
 			return data[idx];
 		}
 
+		//===================Compound operators =======================
+		//Vector addition
+		inline Mat3& operator+=(const Mat3& rhs) noexcept {
+			for (int i = 0; i < 9; ++i) {
+				data[i] += rhs.data[i];
+			}
+			return *this;
+		}
+
+		//Matrix subtraction
+		inline Mat3& operator-=(const Mat3& rhs) noexcept {
+			for (int i = 0; i < 9; ++i) {
+				data[i] -= rhs.data[i];
+			}
+			return *this;
+		}
+
+		//Scalar multiplication
+		inline Mat3& operator*=(float rhs) noexcept {
+			for (int i = 0; i < 9; ++i) {
+				data[i] *= rhs;
+			}
+			return *this;
+		}
+
+		//Scalar division
+		inline Mat3& operator/=(float rhs) noexcept {
+			for (int i = 0; i < 9; ++i) {
+				data[i] /= rhs;
+			}
+			return *this;
+		}
+
+
+		//========================Binary operators=====================
+
 		inline friend Mat3 operator*(const Mat3& lhs, const Mat3& rhs)
 		{
 			Mat3 x;
 			x[0] = lhs[0] * rhs[0] + lhs[3] * rhs[1] + lhs[6] * rhs[2];
 			x[1] = lhs[1] * rhs[0] + lhs[4] * rhs[1] + lhs[7] * rhs[2];
-			x[2] = lhs[2] * rhs[0] + lhs[5] * rhs[1] + lhs[8] * rhs[2]; 
+			x[2] = lhs[2] * rhs[0] + lhs[5] * rhs[1] + lhs[8] * rhs[2];
 			x[3] = lhs[0] * rhs[3] + lhs[3] * rhs[4] + lhs[6] * rhs[5];
 			x[4] = lhs[1] * rhs[3] + lhs[4] * rhs[4] + lhs[7] * rhs[5];
 			x[5] = lhs[2] * rhs[3] + lhs[5] * rhs[4] + lhs[8] * rhs[5];
@@ -348,6 +398,29 @@ namespace rkg {
 
 		inline friend Mat3 operator*(float lhs, const Mat3& rhs) noexcept {
 			return rhs*lhs;
+		}
+		
+		//Matrix addition
+		inline friend Mat3 operator+(Mat3 lhs, const Mat3& rhs) noexcept 
+		{
+			lhs += rhs;
+			return lhs;
+		}
+
+		//Matrix subtraction
+		inline friend Mat3 operator-(Mat3 lhs, const Mat3& rhs) noexcept
+		{
+			lhs -= rhs;
+			return lhs;
+		}
+
+		//Matrix negation
+		inline friend Mat3 operator-(Mat3 lhs) noexcept
+		{
+			for (int i = 0; i < 9; i++) {
+				lhs.data[i] = -lhs.data[i];
+			}
+			return lhs;
 		}
 
 		inline float Determinant() const noexcept

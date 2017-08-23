@@ -204,6 +204,13 @@ std::vector<Vec4>* debug_front_data_buffer = &debug_data_buffers[0];
 std::vector<uint32_t>* debug_back_index_buffer = &debug_index_buffers[1];
 std::vector<Vec4>* debug_back_data_buffer = &debug_data_buffers[1];
 
+gl::ProgramHandle debug_program;
+gl::BufferHandle debug_data_buffer_handle;
+gl::IndexBufferHandle debug_index_buffer_handle;
+RenderMesh::MeshUniforms debug_camera_uniforms;
+gl::BufferHandle debug_camera_buffer_handle;
+
+
 void AddForwardPass(FrameGraph& graph)
 {
 	//Simple example which just draws meshes to the 
@@ -293,6 +300,12 @@ void RenderLoop(GLFWwindow* window)
 	FrameGraph frame_graph;
 	AddForwardPass(frame_graph);
 
+	//Setup debug draw stuff.
+	debug_program = gl::CreateProgram(gl::LoadShaderFile("../Framework/Shaders/debug_draw.vert"), 
+									  gl::LoadShaderFile("../Framework/Shaders/vert_color.frag"));
+	debug_camera_buffer_handle = gl::CreateBufferObject();
+	debug_data_buffer_handle = gl::CreateBufferObject();
+	debug_index_buffer_handle = gl::CreateDynamicIndexBuffer(render::IndexType::UInt);
 
 	while (true) {
 		while (render_fence.test_and_set(std::memory_order_acquire)) {
@@ -303,6 +316,8 @@ void RenderLoop(GLFWwindow* window)
 		//Swap debug draw data.
 		std::swap(debug_front_index_buffer, debug_back_index_buffer);
 		std::swap(debug_front_data_buffer,  debug_back_data_buffer);
+		debug_back_data_buffer->clear();
+		debug_back_index_buffer->clear();
 		game_fence.clear();
 
 		//Update our state by pumping the command list. This syncs state between the game + render threads.
@@ -325,8 +340,30 @@ void RenderLoop(GLFWwindow* window)
 
 		//TODO:Make this less hacky
 		//Draw debug stuff.
+		if (debug_front_data_buffer->size() != 0) {
+			gl::UpdateBufferObject(debug_data_buffer_handle, gl::MakeRef(debug_front_data_buffer->data(), debug_front_data_buffer->size() * sizeof(Vec4)));
+			gl::UpdateDynamicIndexBuffer(debug_index_buffer_handle, gl::MakeRef(debug_front_index_buffer->data(), debug_front_index_buffer->size() * sizeof(uint32_t)));
 
+			debug_camera_uniforms.V = view_matrix;
+			debug_camera_uniforms.MV = view_matrix;
+			debug_camera_uniforms.MVP = projection_matrix*debug_camera_uniforms.MV;
 
+			auto ref = gl::MakeRef(&debug_camera_uniforms, sizeof(RenderMesh::MeshUniforms));
+			gl::UpdateBufferObject(debug_camera_buffer_handle, ref);
+			gl::SetBufferObject(debug_data_buffer_handle, gl::BufferTarget::SHADER_STORAGE, 1);
+			gl::SetBufferObject(debug_camera_buffer_handle, gl::BufferTarget::UNIFORM, 0);
+			gl::SetIndexBuffer(debug_index_buffer_handle);
+
+			gl::SetState(gl::RenderState::RGB_WRITE
+				| gl::RenderState::ALPHA_WRITE
+				| gl::RenderState::DEPTH_WRITE
+				| gl::RenderState::DEPTH_TEST_LESS
+				| gl::RenderState::PRIMITIVE_TRIANGLES
+				| gl::RenderState::CULL_OFF
+				| gl::RenderState::POLYGON_MODE_FILL);
+
+			gl::Submit(0, debug_program);
+		}
 		gl::Render();
 		glfwSwapBuffers(window);
 
@@ -669,24 +706,52 @@ void DebugDrawDisc(const Vec3 & center, const Vec3 & normal, float radius, const
 	struct Disc
 	{
 		Vec4 center;
-		Vec4 normal;
+		Vec4 mat[3];
 		Vec4 color;
 	} disc;
 
 	disc.center = Vec4(center.x, center.y, center.z, radius);
-	disc.normal = Vec4(normal);
+	//Construct a rotation matrix such that rot*(0,0,1) = normal.
+
+	Vec3 n = Normalize(normal);
+
+	Mat3 rot = Mat3::Identity;
+	Vec3 v = Cross(Vec3(0, 0, 1), n);
+	float c = Dot(Vec3(0, 0, 1), n);
+
+	if (abs(c - 1.0) < FLT_EPSILON) { //c -> 1.0 means the normal is effectively the z axis.
+		//Keep it as the identity matrix;
+	}
+	else if (abs(c + 1.0) < FLT_EPSILON) { //c-> -1.0, so the normal is the negative z axis.
+		//Rotation should just rotate 180 degrees, flipping the z component.
+		//TODO: This case.
+		rot(2, 2) = -1;
+	}
+	else {
+		Mat3 skew;
+		skew(0, 0) = 0; skew(0, 1) = -v.z; skew(0, 2) = v.y;
+		skew(1, 0) = v.z; skew(1, 1) = 0; skew(1, 2) = -v.x;
+		skew(2, 0) = -v.y; skew(2, 1) = v.x; skew(2, 2) = 0;
+		rot += skew + skew*skew*(1.f/(1.f+c));
+	}
+	//disc.normal = Vec4(normal);
 	disc.color = color;
+	disc.mat[0] = Vec3(rot(0, 0), rot(0, 1), rot(0, 2));
+	disc.mat[1] = Vec3(rot(1, 0), rot(1, 1), rot(1, 2));
+	disc.mat[2] = Vec3(rot(2, 0), rot(2, 1), rot(2, 2));
 
 	uint32_t primitive_offset = debug_back_data_buffer->size();
 	debug_back_data_buffer->push_back(disc.center);
-	debug_back_data_buffer->push_back(disc.normal);
+	debug_back_data_buffer->push_back(disc.mat[0]);
+	debug_back_data_buffer->push_back(disc.mat[1]);
+	debug_back_data_buffer->push_back(disc.mat[2]);
 	debug_back_data_buffer->push_back(disc.color);
 
-	constexpr int NUM_CYLINDER_VERTS = 16;
-	for (int i = 0; i < NUM_CYLINDER_VERTS; i++) {
+	constexpr int NUM_DISC_VERTS = 3*16;
+	for (int i = 0; i < NUM_DISC_VERTS; i++) {
 		uint32_t index = primitive_offset
 			| (i << 20)
-			| (DebugPrimitive_Cylinder << 29);
+			| (DebugPrimitive_Disc << 29);
 		debug_back_index_buffer->push_back(index);
 	}
 }

@@ -400,10 +400,10 @@ struct DrawCmd : public RenderCmd
 	uint32_t	vertex_buffer{ INVALID_HANDLE };
 	uint32_t	index_buffer{ INVALID_HANDLE };
 
-	uint32_t vertex_offset;
+	uint32_t vertex_offset{ 0 };
 	uint32_t vertex_count;
 
-	uint32_t index_offset;
+	uint32_t index_offset{ 0 };
 	uint32_t index_count;
 
 
@@ -1243,6 +1243,7 @@ namespace
 void UpdateDynamicIndexBuffer(IndexBuffer* ib, const MemoryBlock* block)
 {
 	//TODO: Handle offsets properly.
+	glBindVertexArray(0);
 	GLint prev_buffer;
 	glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &prev_buffer);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ib->buffer);
@@ -1507,6 +1508,9 @@ GLenum GetBufferTargetEnum(BufferTarget target)
 	}
 	return 0;
 }
+
+GLuint vertexless_vao;
+
 }
 
 void gl::SetBufferObject(BufferHandle h, BufferTarget target, uint32_t binding)
@@ -1862,7 +1866,8 @@ void gl::Render()
 			
 		}
 		else { //Vertex buffer isn't bound - just doing indexed drawing. 
-			glBindVertexArray(0); //Bind the default VAO.
+			glBindVertexArray(vertexless_vao); //Bind the default VAO.
+			glBindBuffer(GL_ARRAY_BUFFER, 0);
 			if (draw_cmd->index_buffer != INVALID_HANDLE) {
 				auto& index_buffer = index_buffers[draw_cmd->index_buffer];
 				glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, index_buffer.buffer);
@@ -1936,5 +1941,8 @@ void gl::InitializeBackend(GLFWwindow* window)
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glEnable(GL_CULL_FACE);
 	glCullFace(GL_BACK);
+
+	glGenVertexArrays(1, &vertexless_vao);
+
 	return;
 }

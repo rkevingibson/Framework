@@ -101,7 +101,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
       <AdditionalIncludeDirectories>$(ProjectDir)</AdditionalIncludeDirectories>
-      <AdditionalOptions>/permissive- %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>%(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <AdditionalLibraryDirectories>$(ProjectDir)/External/GLFW/$(Platform)</AdditionalLibraryDirectories>
@@ -447,6 +447,7 @@
     <ClInclude Include="utilities\Utilities.h" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="Shaders\debug_draw.vert" />
     <None Include="Shaders\vert_color.frag" />
     <None Include="Shaders\vert_color.vert" />
   </ItemGroup>

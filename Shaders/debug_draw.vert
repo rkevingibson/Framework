@@ -51,7 +51,7 @@ vec3 Disc(int vertex_id, int primitive_offset, out vec3 normal)
 
 vec3 Cylinder(int vertex_id, in vec3 center, in mat3 rot, float radius)
 {
-	
+	return vec3(0,0,0);
 
 }
 
@@ -60,10 +60,10 @@ void main()
 	//Unpack primitive info.
 	int primitive_offset = gl_VertexID & 0x000FFFFF;
 	int vertex_id = (gl_VertexID >> 20) & 0x1FF;
-	int primitive_type = gl_VertexID >> 29;
+	uint primitive_type = uint(gl_VertexID) >> 29;
 
-	vec3 position = vec3(0,0,0);
-	vec3 normal = vec3(0,0,0);
+	vec3 position = vec3(gl_VertexID & 0x0000FFFF,(gl_VertexID >> 16) & 0x0000FFFF, vertex_id);
+	vec3 normal = vec3(primitive_type,primitive_offset,0);
 	vec4 color = vec4(1.0,0.0,0.0,1.0);
 	switch (primitive_type)
 	{
@@ -76,7 +76,6 @@ void main()
 
 		break;
 		case CYLINDER:
-
 		break;
 		case CONE:
 

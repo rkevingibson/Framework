@@ -403,7 +403,7 @@ private:
 	char* physical_memory_end_;
 
 public:
-	static constexpr unsigned int ALIGNMENT = { alignof(std::max_align_t) };
+	static constexpr unsigned int ALIGNMENT = alignof(std::max_align_t) ;
 
 	GrowingLinearAllocator() :
 		virtual_memory_start_{ static_cast<char*>(virtual_memory::ReserveAddressSpace(MaximumSize)) },

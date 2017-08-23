@@ -8,11 +8,6 @@ layout(binding=0) uniform ModelBlock
 	mat4 MVP;
 };
 
-layout(binding=1) uniform MaterialBlock
-{
-	vec4 albedo; //Alpha channel holds roughness.
-};
-
 in vec3 positionWC;
 in vec3 normalWC;
 in vec4 color;
