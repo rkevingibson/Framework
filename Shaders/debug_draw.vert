@@ -66,7 +66,7 @@ void main()
 
 	vec3 position = vec3(gl_VertexID & 0x0000FFFF,(gl_VertexID >> 16) & 0x0000FFFF, vertex_id);
 	vec3 normal = vec3(0.0,0.0,0.0);
-	color = vec4(1.0,0.0,0.0,1.0);
+	color = vec4(1.0,1.0,0.0,1.0);
 	switch (primitive_type)
 	{
 		case SPHERE:
@@ -74,6 +74,7 @@ void main()
 		break;
 		case DISC:
 			position = Disc(vertex_id, primitive_offset, normal);
+			color = data[primitive_offset+4];
 		break;
 		case CYLINDER:
 		break;
