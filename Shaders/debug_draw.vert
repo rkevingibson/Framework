@@ -35,6 +35,9 @@ vec3 Disc(int vertex_id, int primitive_offset, out vec3 normal)
 
 	const float num_divisions = 16.0;
 	const float dt = 2.0*M_PI/num_divisions;
+	
+	normal = normalize(rot*vec3(0,0,1.0));
+
 	if(vertex_id % 3 == 0) {
 		return center;
 	} else {
@@ -45,8 +48,7 @@ vec3 Disc(int vertex_id, int primitive_offset, out vec3 normal)
 		//Rotate the offset such that positive z is aligned with the normal.
 		return center + rot*offset;
 	}
-
-	normal = rot*vec3(0.0,0.0,1.0);
+	
 }
 
 vec3 Cylinder(int vertex_id, in vec3 center, in mat3 rot, float radius)
@@ -63,8 +65,8 @@ void main()
 	uint primitive_type = uint(gl_VertexID) >> 29;
 
 	vec3 position = vec3(gl_VertexID & 0x0000FFFF,(gl_VertexID >> 16) & 0x0000FFFF, vertex_id);
-	vec3 normal = vec3(primitive_type,primitive_offset,0);
-	vec4 color = vec4(1.0,0.0,0.0,1.0);
+	vec3 normal = vec3(0.0,0.0,0.0);
+	color = vec4(1.0,0.0,0.0,1.0);
 	switch (primitive_type)
 	{
 		case SPHERE:
@@ -72,14 +74,12 @@ void main()
 		break;
 		case DISC:
 			position = Disc(vertex_id, primitive_offset, normal);
-
-
 		break;
 		case CYLINDER:
 		break;
 		case CONE:
-
 		break;
+
 		default:
 		break;
 	}
