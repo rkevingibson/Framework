@@ -1927,7 +1927,7 @@ void gl::InitializeBackend(GLFWwindow* window)
 	glfwMakeContextCurrent(window);
 	current_window = window;
 	LoadGLFunctions();
-
+	gl::SetErrorCallback([](const char* msg) {printf("GL Error: %s\n", msg); });
 #ifdef RENDER_DEBUG
 	glDebugMessageCallback(GLErrorCallback, nullptr);
 	glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
@@ -1943,6 +1943,7 @@ void gl::InitializeBackend(GLFWwindow* window)
 	glCullFace(GL_BACK);
 
 	glGenVertexArrays(1, &vertexless_vao);
+	
 
 	return;
 }

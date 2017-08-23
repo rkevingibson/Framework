@@ -673,6 +673,8 @@ namespace
 		DebugPrimitive_Cylinder,
 		DebugPrimitive_Cone,
 	};
+
+	constexpr int DEBUG_NUM_DIVISIONS = 32;
 }
 
 
@@ -692,7 +694,7 @@ void DebugDrawSphere(const Vec3 & position, float radius, const Vec4 & color)
 	debug_back_data_buffer->push_back(sphere.pos);
 	debug_back_data_buffer->push_back(sphere.color);
 	
-	constexpr int NUM_SPHERE_VERTS = 32;
+	constexpr int NUM_SPHERE_VERTS = DEBUG_NUM_DIVISIONS;
 	for (int i = 0; i < NUM_SPHERE_VERTS; i++) {
 		uint32_t index = primitive_offset 
 			| (i << 20)
@@ -714,40 +716,14 @@ void DebugDrawDisc(const Vec3 & center, const Vec3 & normal, float radius, const
 	//Construct a rotation matrix such that rot*(0,0,1) = normal.
 
 	Vec3 n = Normalize(normal);
-
-	Mat3 rot = Mat3::Identity;
-	Vec3 v = Cross(Vec3(0, 0, 1), n);
-	float c = Dot(Vec3(0, 0, 1), n);
-
-	if (abs(c - 1.0) < FLT_EPSILON) { //c -> 1.0 means the normal is effectively the z axis.
-		//Keep it as the identity matrix;
-	}
-	else if (abs(c + 1.0) < FLT_EPSILON) { //c-> -1.0, so the normal is the negative z axis.
-		//Rotation should just rotate 180 degrees, flipping the z component.
-		//TODO: This case.
-		rot(2, 2) = -1;
-	}
-	else {
-		Mat3 skew;
-		skew(0, 0) = 0; skew(0, 1) = -v.z; skew(0, 2) = v.y;
-		skew(1, 0) = v.z; skew(1, 1) = 0; skew(1, 2) = -v.x;
-		skew(2, 0) = -v.y; skew(2, 1) = v.x; skew(2, 2) = 0;
-		rot += skew + skew*skew*(1.f/(1.f+c));
-	}
-	//disc.normal = Vec4(normal);
 	disc.color = color;
-	disc.mat[0] = Vec3(rot(0, 0), rot(0, 1), rot(0, 2));
-	disc.mat[1] = Vec3(rot(1, 0), rot(1, 1), rot(1, 2));
-	disc.mat[2] = Vec3(rot(2, 0), rot(2, 1), rot(2, 2));
 
 	uint32_t primitive_offset = debug_back_data_buffer->size();
 	debug_back_data_buffer->push_back(disc.center);
-	debug_back_data_buffer->push_back(disc.mat[0]);
-	debug_back_data_buffer->push_back(disc.mat[1]);
-	debug_back_data_buffer->push_back(disc.mat[2]);
-	debug_back_data_buffer->push_back(disc.color);
+	debug_back_data_buffer->push_back(n);
+	debug_back_data_buffer->push_back(color);
 
-	constexpr int NUM_DISC_VERTS = 3*16;
+	constexpr int NUM_DISC_VERTS = 3*DEBUG_NUM_DIVISIONS;
 	for (int i = 0; i < NUM_DISC_VERTS; i++) {
 		uint32_t index = primitive_offset
 			| (i << 20)
@@ -773,13 +749,22 @@ void DebugDrawCylinder(const Vec3 & start, const Vec3 & end, float radius, const
 	debug_back_data_buffer->push_back(cylinder.top);
 	debug_back_data_buffer->push_back(cylinder.color);
 
-	constexpr int NUM_CYLINDER_VERTS = 32;
+	constexpr int NUM_CYLINDER_VERTS = 6*DEBUG_NUM_DIVISIONS;
 	for (int i = 0; i < NUM_CYLINDER_VERTS; i++) {
 		uint32_t index = primitive_offset
 			| (i<<20)
 			| (DebugPrimitive_Cylinder << 29);
 		debug_back_index_buffer->push_back(index);
 	}
+}
+
+void DebugDrawCappedCylinder(const Vec3 & start, const Vec3 & end, float radius, const Vec4 & color)
+{
+	Vec3 axis = Normalize(end - start);
+	DebugDrawCylinder(start, end, radius, color);
+	DebugDrawDisc(start, -axis, radius, color);
+	DebugDrawDisc(end, axis, radius, color);
+
 }
 
 void DebugDrawCone(const Vec3 & bottom, const Vec3 & top, float radius, const Vec4 & color)
@@ -801,13 +786,16 @@ void DebugDrawCone(const Vec3 & bottom, const Vec3 & top, float radius, const Ve
 	debug_back_data_buffer->push_back(cone.top);
 	debug_back_data_buffer->push_back(cone.color);
 
-	constexpr int NUM_CONE_VERTS = 32;
+	constexpr int NUM_CONE_VERTS = 3*DEBUG_NUM_DIVISIONS;
 	for (int i = 0; i < NUM_CONE_VERTS; i++) {
 		uint32_t index = primitive_offset
 			| (i << 20)
 			| (DebugPrimitive_Cone << 29);
 		debug_back_index_buffer->push_back(index);
 	}
+
+	//Draw the bottom cap.
+	DebugDrawDisc(bottom, Normalize(bottom-top), radius, color);
 }
 
 void DebugDrawArrow(const Vec3 & tail, const Vec3 & tip, float tail_radius, float head_radius, float head_length, const Vec4 & color)
@@ -815,6 +803,7 @@ void DebugDrawArrow(const Vec3 & tail, const Vec3 & tip, float tail_radius, floa
 	//So simple!!
 	Vec3 tail_end = tail + head_length*(tip-tail);
 	DebugDrawCylinder(tail, tail_end, tail_radius, color);
+	DebugDrawDisc(tail, Normalize(tail-tip), tail_radius, color);
 	DebugDrawCone(tail_end, tip, head_radius, color);
 }
 
