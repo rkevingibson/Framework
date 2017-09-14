@@ -16,6 +16,9 @@
 using namespace rkg;
 
 namespace {
+
+	float g_imgui_scaling_factor = 2.0;
+
 	struct {
 		GLFWwindow* window;
 		double time;		
@@ -27,12 +30,12 @@ namespace {
 	void Render(ImDrawData* draw_data)
 	{
 		ImGuiIO& io = ImGui::GetIO();
-		float fb_height = io.DisplaySize.y * io.DisplayFramebufferScale.y;
-		draw_data->ScaleClipRects(io.DisplayFramebufferScale);
-
+		float fb_height = g_imgui_scaling_factor*io.DisplaySize.y * io.DisplayFramebufferScale.y;
+		
+		draw_data->ScaleClipRects(ImVec2(g_imgui_scaling_factor, g_imgui_scaling_factor));
+		
 		auto vert_buffer_size = 0u;
 		auto index_buffer_size = 0u;
-
 
 		//Copy all data to the vertex/index buffers on the GPU
 		for (int n = 0; n < draw_data->CmdListsCount; n++) {
@@ -91,11 +94,13 @@ namespace {
 	{
 		glfwSetClipboardString(gui.window, text);
 	}
+
+	
+
 }
 
 void rkg::InitializeImgui(GLFWwindow* window)
 {
-	//TODO: IO setup, callbacks, etc.
 	gui.window = window;
 	auto& io = ImGui::GetIO();
 
@@ -127,8 +132,13 @@ void rkg::InitializeImgui(GLFWwindow* window)
 #endif
 
 	//Create fonts texture
+	
 	unsigned char* pixels;
 	int width, height, bpp;
+	ImFontConfig font_config = {};
+	font_config.SizePixels = 13*g_imgui_scaling_factor;
+	io.FontGlobalScale = 1.0/g_imgui_scaling_factor;
+	io.Fonts->AddFontDefault(&font_config);
 	io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height, &bpp);
 
 	auto block = gl::AllocAndCopy(pixels, width*height*bpp);
@@ -150,8 +160,9 @@ void rkg::ImguiNewFrame()
 	int display_w, display_h;
 	glfwGetWindowSize(gui.window, &w, &h);
 	glfwGetFramebufferSize(gui.window, &display_w, &display_h);
-	io.DisplaySize = ImVec2((float)display_w, (float)display_h);
+	io.DisplaySize = ImVec2((float)w/g_imgui_scaling_factor, (float)h/g_imgui_scaling_factor);
 	io.DisplayFramebufferScale = ImVec2((float)display_w / w, (float)display_h / h);
+	io.DisplayFramebufferScale = ImVec2(1, 1);
 
 	// Setup time step
 	double current_time = glfwGetTime();
@@ -162,7 +173,7 @@ void rkg::ImguiNewFrame()
 	if (glfwGetWindowAttrib(gui.window, GLFW_FOCUSED)) {
 		double mouse_x, mouse_y;
 		glfwGetCursorPos(gui.window, &mouse_x, &mouse_y);
-		io.MousePos = ImVec2((float)mouse_x, (float)mouse_y);
+		io.MousePos = ImVec2((float)mouse_x/g_imgui_scaling_factor, (float)mouse_y/g_imgui_scaling_factor);
 	}
 	else {
 		io.MousePos = ImVec2(-1, -1);
