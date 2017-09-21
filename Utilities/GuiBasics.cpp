@@ -17,7 +17,7 @@ using namespace rkg;
 
 namespace {
 
-	float g_imgui_scaling_factor = 2.0;
+	float g_imgui_scaling_factor = 1.5;
 
 	struct {
 		GLFWwindow* window;

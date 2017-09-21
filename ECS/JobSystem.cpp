@@ -149,7 +149,9 @@ namespace {
 			int random_index = GetRandomThreadIndex(num_job_queues); //Should probably randomize this properly.
 
 			if (random_index == thread_index) {
-				std::this_thread::yield();
+				using namespace std::chrono_literals;
+				std::this_thread::sleep_for(1ms);
+				//std::this_thread::yield();
 				return nullptr;
 			}
 			else {
