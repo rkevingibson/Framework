@@ -235,6 +235,10 @@ namespace gl
 	{
 		//To start with, set rasterizer state and depth state.
 
+		static RasterizerState current_rasterizer_state;
+		static ProgramHandle current_program;
+		static VertexBufferHandle current_vertex_buffer;
+		static IndexBufferHandle current_vertex_buffer;
 
 	}
 
