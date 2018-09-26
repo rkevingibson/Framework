@@ -100,20 +100,27 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(ProjectDir)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\VulkanSDK\1.1.77.0\Include;$(ProjectDir)</AdditionalIncludeDirectories>
       <AdditionalOptions>/permissive- %(AdditionalOptions)</AdditionalOptions>
+      <ConformanceMode>true</ConformanceMode>
     </ClCompile>
     <Link>
       <AdditionalLibraryDirectories>$(ProjectDir)/External/GLFW/$(Platform)</AdditionalLibraryDirectories>
     </Link>
     <Lib>
-      <AdditionalDependencies>opengl32.lib</AdditionalDependencies>
+      <AdditionalDependencies>glfw3.lib;vulkan-1.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(ProjectDir)External\GLFW\x64;C:\VulkanSDK\1.1.77.0\Lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Lib>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(ProjectDir)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\VulkanSDK\1.1.77.0\Include;$(ProjectDir)</AdditionalIncludeDirectories>
+      <ConformanceMode>true</ConformanceMode>
     </ClCompile>
+    <Lib>
+      <AdditionalDependencies>glfw3.lib;vulkan-1.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(ProjectDir)External\GLFW\x64;C:\VulkanSDK\1.1.77.0\Lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+    </Lib>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="ecs\DefaultSystems.cpp" />
@@ -130,6 +137,7 @@
     <ClCompile Include="renderer\Renderer.cpp" />
     <ClCompile Include="renderer\RenderInterface.cpp" />
     <ClCompile Include="Renderer\StateGroup.cpp" />
+    <ClCompile Include="Renderer\VulkanContext.cpp" />
     <ClCompile Include="utilities\Allocators.cpp" />
     <ClCompile Include="utilities\CommandStream.cpp" />
     <ClCompile Include="utilities\Filesystem.cpp" />
@@ -433,6 +441,7 @@
     <ClInclude Include="Renderer\Mesh.h" />
     <ClInclude Include="renderer\Renderer.h" />
     <ClInclude Include="renderer\RenderInterface.h" />
+    <ClInclude Include="Renderer\VulkanContext.h" />
     <ClInclude Include="utilities\Allocators.h" />
     <ClInclude Include="utilities\CommandStream.h" />
     <ClInclude Include="utilities\Filesystem.h" />

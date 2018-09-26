@@ -46,7 +46,7 @@ public:
 	FallbackAllocator& operator=(const FallbackAllocator&) = default;
 	FallbackAllocator& operator=(FallbackAllocator&&) = default;
 
-	inline MemoryBlock Allocate(size_t)
+	inline MemoryBlock Allocate(size_t n)
 	{
 		MemoryBlock r = p_.Allocate(n);
 		if (!r.ptr) {
@@ -73,7 +73,7 @@ public:
 		}
 	}
 
-	bool Owns(MemoryBlock)
+	bool Owns(MemoryBlock b)
 	{
 		return p_.Owns(b) || f_.Owns(b);
 	}
@@ -156,7 +156,7 @@ public:
 
 	bool Owns(MemoryBlock b)
 	{
-		return b.ptr >= stack_ && b.ptr < stack_ + s;
+		return b.ptr >= stack_ && b.ptr < stack_ + Size;
 	}
 
 	MemoryBlock AllocateAll()
@@ -332,30 +332,30 @@ public:
 	void Deallocate(MemoryBlock b)
 	{
 		b.length += RoundToAligned(sizeof(Prefix), ALIGNMENT) + sizeof(Suffix);
-		b.ptr = reinterpret_cast<void*>(reinterpret_cast<char*>(block.ptr) - RoundToAligned(sizeof(Prefix), ALIGNMENT));
+		b.ptr = reinterpret_cast<void*>(reinterpret_cast<char*>(b.ptr) - RoundToAligned(sizeof(Prefix), ALIGNMENT));
 		allocator_.Deallocate(b);
 	}
 
 	void Reallocate(MemoryBlock& b, size_t new_size)
 	{
 		b.length += RoundToAligned(sizeof(Prefix), ALIGNMENT) + sizeof(Suffix);
-		b.ptr = reinterpret_cast<void*>(reinterpret_cast<char*>(block.ptr) - RoundToAligned(sizeof(Prefix), ALIGNMENT));
+		b.ptr = reinterpret_cast<void*>(reinterpret_cast<char*>(b.ptr) - RoundToAligned(sizeof(Prefix), ALIGNMENT));
 		size_t size = RoundToAligned(sizeof(Prefix), ALIGNMENT)
-			+ RoundToAligned(n, alignof(Suffix))
+			+ RoundToAligned(new_size, alignof(Suffix))
 			+ sizeof(Suffix);
 
 		allocator_.Reallocate(b, size);
 
-		if (block.length != 0) {
-			block.ptr = reinterpret_cast<void*>(reinterpret_cast<char*>(block.ptr) + RoundToAligned(sizeof(Prefix), ALIGNMENT));
-			block.length = block.length - RoundToAligned(sizeof(Prefix), ALIGNMENT) - sizeof(Suffix);
+		if (b.length != 0) {
+			b.ptr = reinterpret_cast<void*>(reinterpret_cast<char*>(b.ptr) + RoundToAligned(sizeof(Prefix), ALIGNMENT));
+			b.length = b.length - RoundToAligned(sizeof(Prefix), ALIGNMENT) - sizeof(Suffix);
 		}
 	}
 
 	bool Owns(MemoryBlock b)
 	{
 		b.length += RoundToAligned(sizeof(Prefix), ALIGNMENT) + sizeof(Suffix);
-		b.ptr = reinterpret_cast<void*>(reinterpret_cast<char*>(block.ptr) - RoundToAligned(sizeof(Prefix), ALIGNMENT));
+		b.ptr = reinterpret_cast<void*>(reinterpret_cast<char*>(b.ptr) - RoundToAligned(sizeof(Prefix), ALIGNMENT));
 		return allocator_.Owns(b);
 	}
 };
@@ -403,7 +403,7 @@ private:
 	char* physical_memory_end_;
 
 public:
-	static constexpr unsigned int ALIGNMENT = { alignof(std::max_align_t) };
+	static constexpr unsigned int ALIGNMENT = { alignof(typename std::max_align_t) };
 
 	GrowingLinearAllocator() :
 		virtual_memory_start_{ static_cast<char*>(virtual_memory::ReserveAddressSpace(MaximumSize)) },
@@ -474,7 +474,7 @@ public:
 
 	inline bool Owns(MemoryBlock b)
 	{
-		return b.ptr > physical_memory_start_ && b.ptr < physical_memory_end_;
+		return b.ptr > virtual_memory_start_ && b.ptr < physical_memory_end_;
 	}
 
 	inline char* Begin()
