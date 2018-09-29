@@ -135,7 +135,7 @@
     <ClCompile Include="renderer\ArcballCamera.cpp" />
     <ClCompile Include="Renderer\Mesh.cpp" />
     <ClCompile Include="renderer\Renderer.cpp" />
-    <ClCompile Include="renderer\RenderInterface.cpp" />
+    <ClCompile Include="Renderer\RenderInterface.cpp" />
     <ClCompile Include="Renderer\StateGroup.cpp" />
     <ClCompile Include="Renderer\VulkanContext.cpp" />
     <ClCompile Include="utilities\Allocators.cpp" />
@@ -440,7 +440,8 @@
     <ClInclude Include="renderer\GLLite.h" />
     <ClInclude Include="Renderer\Mesh.h" />
     <ClInclude Include="renderer\Renderer.h" />
-    <ClInclude Include="renderer\RenderInterface.h" />
+    <ClInclude Include="Renderer\RenderGraph.h" />
+    <ClInclude Include="Renderer\RenderInterface.h" />
     <ClInclude Include="Renderer\VulkanContext.h" />
     <ClInclude Include="utilities\Allocators.h" />
     <ClInclude Include="utilities\CommandStream.h" />

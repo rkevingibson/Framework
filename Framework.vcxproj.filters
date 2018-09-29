@@ -45,9 +45,6 @@
     <ClCompile Include="renderer\Renderer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="renderer\RenderInterface.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="utilities\Allocators.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -82,6 +79,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Renderer\VulkanContext.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Renderer\RenderInterface.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -947,9 +947,6 @@
     <ClInclude Include="renderer\Renderer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="renderer\RenderInterface.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="utilities\Allocators.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -983,9 +980,6 @@
     <ClInclude Include="Renderer\Mesh.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Renderer\FrameGraph.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="External\json.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -999,6 +993,15 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Renderer\VulkanContext.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Renderer\RenderGraph.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Renderer\FrameGraph.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Renderer\RenderInterface.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
