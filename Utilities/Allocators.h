@@ -28,6 +28,11 @@
 */
 namespace rkg {
 
+struct MemoryBlock {
+    void*  ptr{nullptr};
+    size_t length{0};
+};
+
 template <class Primary, class Fallback>
 class FallbackAllocator {
     Primary  p_;
@@ -57,11 +62,12 @@ class FallbackAllocator {
     inline void Reallocate(MemoryBlock& b, size_t new_size)
     {
         if (p_.Owns(b)) {
-            return p_.Reallocate(b, new_size);
+            p_.Reallocate(b, new_size);
+            if (b.length == new_size) {
+                return;
+            }
         }
-        else {
-            return f_.Reallocate(b, new_size);
-        }
+        return f_.Reallocate(b, new_size);
     }
 
     void Deallocate(MemoryBlock b)
@@ -70,7 +76,7 @@ class FallbackAllocator {
             p_.Deallocate(b);
         }
         else {
-            F::Deallocate(b);
+            f_.Deallocate(b);
         }
     }
 
@@ -87,13 +93,18 @@ template <size_t Size, size_t Alignment = 4>
 class StackAllocator {
    private:
     char  stack_[Size];
-    char* head_;
+    char* head_{stack_};
 
 
    public:
     static constexpr unsigned ALIGNMENT = Alignment;
 
-    StackAllocator() : head_(stack_) {}
+    StackAllocator()                      = default;
+    ~StackAllocator()                     = default;
+    StackAllocator(const StackAllocator&) = delete;
+    StackAllocator(StackAllocator&&)      = default;
+    StackAllocator& operator=(const StackAllocator&) = delete;
+    StackAllocator& operator=(StackAllocator&&) = default;
 
     MemoryBlock Allocate(size_t n)
     {
@@ -127,7 +138,7 @@ class StackAllocator {
         if ((char*)b.ptr + RoundToAligned(b.length, Alignment) == head_) {
             // At the head, so just check if we have space for the new one.
             auto n1 = RoundToAligned(new_size, Alignment);
-            if (n1 <= stack_ + Size - b.ptr) {
+            if (n1 <= stack_ + Size - (char*)b.ptr) {
                 head_    = (char*)b.ptr + n1;
                 b.length = n1;
             }
@@ -137,6 +148,8 @@ class StackAllocator {
                 // Reallocate at the head.
                 auto new_block = Allocate(new_size);
                 if (new_block.ptr) {
+                    memcpy(new_block.ptr, b.ptr, std::min(b.length, new_size));
+                    Deallocate(b);
                     b = new_block;
                 }
             }
@@ -176,31 +189,32 @@ class CollectionOfStacksAllocator {
     size_t  stack_list_size{0};
     size_t  active_stack{0};
 
-
-    bool ResizeAllocatorList(size_t new_size)
+    bool GrowAllocatorList()
     {
         MemoryBlock b;
         b.length = stack_list_size * sizeof(Stack*);
         b.ptr    = stack_list;
-        if (base_allocator.Owns(b)) {
-            base_allocator.Reallocate(b, new_size * sizeof(Stack*));
+        if (stack_list != nullptr) {
+            base_allocator.Reallocate(b, 2 * stack_list_size * sizeof(Stack*));
         }
         else {
-            b = base_allocator.Allocate(new_size * sizeof(Stack*));
+            b = base_allocator.Allocate(4 * sizeof(Stack*));
         }
 
-        if (b.length != new_size * sizeof(Stack*)) {
+        if (b.length == stack_list_size * sizeof(Stack*)) {
             return false;
         }
 
-        stack_list = (Stack**)b.ptr;
+        size_t new_size = b.length / sizeof(Stack*);
+        stack_list      = (Stack**)b.ptr;
         for (size_t i = stack_list_size; i < new_size; ++i) { stack_list[i] = nullptr; }
+        stack_list_size = new_size;
     }
 
     Stack* AllocateStack()
     {
-        MemoryBlock b = base_allocator.Allocator(sizeof(Stack));
-        if (b == nullptr) {
+        MemoryBlock b = base_allocator.Allocate(sizeof(Stack));
+        if (b.ptr == nullptr) {
             return nullptr;
         }
         new (b.ptr) Stack();
@@ -208,33 +222,133 @@ class CollectionOfStacksAllocator {
     }
 
    public:
+    static constexpr unsigned int ALIGNMENT = Alignment;
+
     CollectionOfStacksAllocator() : base_allocator{}
     {
-        ResizeAllocatorList(4);
+        GrowAllocatorList();
 
         stack_list[0] = AllocateStack();
-        active_stack      = 0;
+        active_stack  = 0;
     }
+    ~CollectionOfStacksAllocator() { DeallocateAll(); }
+    CollectionOfStacksAllocator(const CollectionOfStacksAllocator&) = delete;
+    CollectionOfStacksAllocator(CollectionOfStacksAllocator&&)      = default;
+    CollectionOfStacksAllocator& operator=(const CollectionOfStacksAllocator&) = delete;
+    CollectionOfStacksAllocator& operator=(CollectionOfStacksAllocator&&) = default;
 
-    MemoryBlock Allocate(size_t n) {
-        if(n > StackSize || stack_list[active_stack] == nullptr) { //Will never be able to allocate this, don't even try.
-            return MemoryBlock{0, nullptr};
+    MemoryBlock Allocate(size_t n)
+    {
+        if (n > StackSize || stack_list[active_stack] == nullptr) {
+            // Will never be able to allocate this, don't even try.
+            return MemoryBlock{};
         }
         MemoryBlock b = stack_list[active_stack]->Allocate(n);
-        if(b.ptr != nullptr) 
-        {
+        if (b.ptr != nullptr) {
             return b;
         }
         else {
             active_stack++;
-            if(active_stack == stack_list_size) {
-                ResizeAllocatorList(stack_list_size * 2);
+            if (active_stack == stack_list_size) {
+                GrowAllocatorList();
             }
             stack_list[active_stack] = AllocateStack();
-            if(stack_list[active_stack] == nullptr) {
-                return MemoryBlock { 0, nullptr };
+            if (stack_list[active_stack] == nullptr) {
+                return MemoryBlock{};
             }
-            return stack_list[active_stack]->Allocate(n); //This is guaranteed to succeed this time.
+            // This is guaranteed to succeed this time.
+            return stack_list[active_stack]->Allocate(n);
+        }
+    }
+
+    void Reallocate(MemoryBlock& b, size_t n)
+    {
+        // Our reallocation strategy? Try to reallocate from the block that owns it,
+        // otherwise from the active block, otherwise from a new block.
+        if (n > StackSize) {
+            return;
+        }
+
+        for (size_t i = 0; i < active_stack; ++i) {
+            if (stack_list[i]->Owns(b)) {
+                stack_list[i]->Reallocate(b, n);
+                break;
+            }
+        }
+        if (b.length != n) {
+            // Attempt to allocate from the last stack.
+            if (stack_list[active_stack]->Owns(b)) {
+                stack_list[active_stack]->Reallocate(b, n);
+            }
+            else {
+                MemoryBlock new_b = stack_list[active_stack]->Allocate(b, n);
+                if (new_b.ptr != nullptr) {
+                    memcpy(new_b.ptr, b.ptr, std::min(b.length, n));
+                    Deallocate(b);
+                    b = new_b;
+                    return;
+                }
+            }
+        }
+        if (b.length != n) {
+            // Create a new stack, attempt to allocate.
+            active_stack++;
+            if (active_stack == stack_list_size) {
+                GrowAllocatorList(stack_list_size * 2);
+            }
+            stack_list[active_stack] = AllocateStack();
+            if (stack_list[active_stack] == nullptr) {
+                return;  // Reallocation failed.
+            }
+
+            MemoryBlock new_b = stack_list[active_stack]->Allocate(b, n);
+            memcpy(new_b.ptr, b.ptr, std::min(b.length, n));
+            Deallocate(b);
+            b = new_b;
+        }
+    }
+
+    void Deallocate(MemoryBlock b)
+    {
+        // Find the owning stack, and call deallocate.
+        for (size_t i = 0; i <= active_stack; ++i) {
+            if (stack_list[i]->Owns(b)) {
+                stack_list[i]->Deallocate(b);
+                return;
+            }
+        }
+    }
+
+    void DeallocateAll()
+    {
+        for (size_t i = 1; i <= active_stack; ++i) {
+            stack_list[i]->DeallocateAll();
+            stack_list[i]->~Stack();
+            MemoryBlock s;
+            s.length = sizeof(Stack);
+            s.ptr    = stack_list[i];
+            base_allocator.Deallocate(s);
+        }
+        stack_list[0]->DeallocateAll();
+        active_stack = 0;
+    }
+
+    bool Owns(MemoryBlock b)
+    {
+        for (size_t i = 0; i <= active_stack; ++i) {
+            if (stack_list[i]->Owns(b)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool Expand(MemoryBlock& b, size_t delta)
+    {
+        for (size_t i = 0; i <= active_stack; ++i) {
+            if (stack_list[i]->Owns(b)) {
+                return stack_list[i]->Expand(b, delta);
+            }
         }
     }
 };
@@ -369,10 +483,10 @@ class Segregator {
 
 /*
     Affix Allocator:
-    Allocates using the supplied allocator, but with extra space before and after to make room for a
-   prefix and suffix. The returned memory block is to the original allocation, so the prefix/suffix
-   space can be ignored. Should be used by a child allocator (using private inheritance) to specify
-   behaviour about the prefix and suffix.
+    Allocates using the supplied allocator, but with extra space before and after to make room
+   for a prefix and suffix. The returned memory block is to the original allocation, so the
+   prefix/suffix space can be ignored. Should be used by a child allocator (using private
+   inheritance) to specify behaviour about the prefix and suffix.
 
 */
 template <class Allocator, class Prefix, class Suffix = void>
@@ -385,8 +499,8 @@ class AffixAllocator {
 
     MemoryBlock Allocate(size_t n)
     {
-        // Need to allocate n + sizeof(Prefix) + sizeof(Suffix) at least, plus anything needed for
-        // alignment.
+        // Need to allocate n + sizeof(Prefix) + sizeof(Suffix) at least, plus anything needed
+        // for alignment.
         size_t size = RoundToAligned(sizeof(Prefix), ALIGNMENT) +
                       RoundToAligned(n, alignof(Suffix)) + sizeof(Suffix);
         MemoryBlock block = allocator_.Allocate(size);
@@ -442,6 +556,13 @@ class AffixAllocator {
 class Mallocator {
    public:
     static constexpr unsigned int ALIGNMENT = 8;  // Actually is 16, on 64bit windows.
+
+    Mallocator() = default;
+    ~Mallocator() = default;
+    Mallocator(const Mallocator&) = default;
+    Mallocator(Mallocator&&) = default;
+    Mallocator& operator=(const Mallocator&) = default;
+    Mallocator& operator=(Mallocator&&) = default;
 
     MemoryBlock Allocate(size_t n)
     {
@@ -558,8 +679,8 @@ class GrowingLinearAllocator {
 
 /*
 Virtual memory:
-Here is a simple wrapper for some virtual memory functionality that I will eventually want to make
-cross-platform.
+Here is a simple wrapper for some virtual memory functionality that I will eventually want to
+make cross-platform.
 */
 
 namespace virtual_memory {

@@ -37,21 +37,6 @@ ASSERTIONS
 
 namespace rkg
 {
-
-/*
-====================
-CORE FRAMEWORK TYPES
-====================
-*/
-
-struct MemoryBlock
-{
-	void* ptr;
-	size_t length;
-};
-
-
-
 /*
 ====================
 UTILITY FUNCTIONS
