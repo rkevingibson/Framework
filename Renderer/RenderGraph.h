@@ -36,7 +36,8 @@ struct RenderGraph {
 
     // TODO: Nit. Don't like this way of doing things. Would like to be able to execute the nodes
     // directly, via node->execute(). Preferably no arguments needed, though maybe passing the graph
-    // is a good idea.
+    // is a good idea. Alternatively, the nodes can contain a pointer to the graph, but that's somewhat circular and has risks with it.
+
     inline void ExecuteNode(RenderGraphNode* node)
     {
         node->fn(resource_manager, node->executor_block.ptr, node->user_data_block.ptr);
@@ -47,8 +48,9 @@ struct RenderGraph {
 
 struct RenderGraphFactory {
     // TODO: More manual memory management once we're up and running.
-    
+
     std::unique_ptr<RenderGraph> graph{std::make_unique<RenderGraph>()};
+    bool                         compiled{false};
 
     template <typename T, typename Setup, typename Executor>
     inline void AddNode(const char* name, Setup&& setup_fn, Executor&& execute_fn)
@@ -57,8 +59,7 @@ struct RenderGraphFactory {
         static_assert(
             alignof(T) <= UserDataAllocator::ALIGNMENT,
             "User data allocator needs larger alignment for this type");
-        static_assert(
-            sizeof(Executor) <= KILO(1), "Executor function is too large.");
+        static_assert(sizeof(Executor) <= KILO(1), "Executor function is too large.");
 
         auto execute_fn_wrapper =
             [](const ResourceManager& resource_manager, void* functor, void* user_data) {
@@ -68,20 +69,23 @@ struct RenderGraphFactory {
 
         graph->nodes.emplace_back();
         RenderGraphNode& node = graph->nodes.back();
-        node.fn    = execute_fn_wrapper;
-        MemoryBlock b = graph->executor_allocator.Allocate(sizeof(Executor));
+        node.fn               = execute_fn_wrapper;
+        MemoryBlock b         = graph->executor_allocator.Allocate(sizeof(Executor));
         new (b.ptr) Executor(std::forward<Executor>(execute_fn));
-        node.executor_block = b;
-        node.name = name;
+        node.executor_block  = b;
+        node.name            = name;
         node.user_data_block = graph->user_data_allocator.Allocate(sizeof(T));
         new (node.user_data_block.ptr) T;
 
-        //Run Setup function
+        // Run Setup function
         setup_fn(graph->resource_manager, *reinterpret_cast<T*>(node.user_data_block.ptr));
     };
     inline std::unique_ptr<RenderGraph> Compile()
     {
-        //TODO: Figure out dependencies;
+        // TODO: Figure out dependencies;
+
+        Expects(compiled == false);
+        compiled = true;
         return std::move(graph);
     }
 };
