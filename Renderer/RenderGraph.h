@@ -13,7 +13,54 @@ using LambdaAllocator =
     FallbackAllocator<CollectionOfStacksAllocator<Mallocator, KILO(2), 4>, Mallocator>;
 using UserDataAllocator = Mallocator;
 
+using RenderGraphResource = uint64_t;
+
+struct BufferCreationInfo
+{
+    enum UsageFlagBits {
+        TransferSrcBit        = 0x01,
+        TransferDstBit        = 0x02,
+        UniformTexelBufferBit = 0x04,
+        StorageTexelBufferBit = 0x08,
+        UniformBufferBit      = 0x10,
+        StorageBufferBit      = 0x20,
+        IndexBufferBit        = 0x40,
+        IndirectBufferBit     = 0x80,
+    };
+    size_t size;
+    uint32_t usage;
+
+};
+
 struct ResourceManager {
+	RenderGraphResource CreateBuffer(const BufferCreationInfo& info);
+    RenderGraphResource ReadBuffer(RenderGraphResource);
+    RenderGraphResource WriteBuffer(RenderGraphResource);
+
+    //Should not be called outside of the rendergraph. Maybe should be friend function?
+    inline void NewNode() {
+        current_node++;
+    }
+private:
+    struct Resource {
+        RenderGraphResource handle;
+
+    };
+
+    struct UsageEntry {
+        enum {
+            Read = 0x1,
+            Write = 0x2,
+            Creation = 0x4,
+        };
+        size_t node_index;
+        size_t resource_index;
+        uint8_t usage {0};
+    };
+    std::vector<Resource> resources;
+    std::vector<UsageEntry> usages;
+
+    size_t current_node {0};
 };
 
 struct RenderGraph;
@@ -78,6 +125,7 @@ struct RenderGraphFactory {
         new (node.user_data_block.ptr) T;
 
         // Run Setup function
+        graph->resource_manager.NewNode();
         setup_fn(graph->resource_manager, *reinterpret_cast<T*>(node.user_data_block.ptr));
     };
     inline std::unique_ptr<RenderGraph> Compile()

@@ -135,6 +135,7 @@
     <ClCompile Include="renderer\ArcballCamera.cpp" />
     <ClCompile Include="Renderer\Mesh.cpp" />
     <ClCompile Include="renderer\Renderer.cpp" />
+    <ClCompile Include="Renderer\RenderGraph.cpp" />
     <ClCompile Include="Renderer\RenderInterface.cpp" />
     <ClCompile Include="Renderer\StateGroup.cpp" />
     <ClCompile Include="Renderer\VulkanContext.cpp" />
